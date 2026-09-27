@@ -1,0 +1,324 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no" />
+  <title>ZANSHIN: BLADE OF RESOLVE | 3D Precision Combat</title>
+  <link rel="stylesheet" href="/src/style.css" />
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@500;700;900&family=Noto+Serif+JP:wght@600;900&family=Rajdhani:wght@500;600;700&display=swap" rel="stylesheet">
+</head>
+<body>
+  <!-- 3D Canvas Container -->
+  <div id="canvas-container"></div>
+
+  <!-- HUD Overlay -->
+  <div id="hud" class="hud-layer hidden">
+    <!-- Player Status (Bottom Left) -->
+    <div class="player-hud">
+      <div class="hud-label-row">
+        <span class="hud-name">RONIN</span>
+        <span class="hud-heal-charges" id="hud-heal-charges">GOURD [1] x3</span>
+      </div>
+      <!-- Health Bar -->
+      <div class="bar-container health-bar-container">
+        <div class="bar-fill player-health-fill" id="player-health-fill"></div>
+        <div class="bar-ghost player-health-ghost" id="player-health-ghost"></div>
+      </div>
+      <!-- Posture Bar -->
+      <div class="bar-label-sub">POSTURE</div>
+      <div class="bar-container posture-bar-container">
+        <div class="bar-fill player-posture-fill" id="player-posture-fill"></div>
+      </div>
+      <!-- Special Meter -->
+      <div class="special-meter-container">
+        <div class="special-meter-label">SPIRIT [R]</div>
+        <div class="special-meter-pips" id="special-meter-pips">
+          <div class="special-pip" id="pip-1"></div>
+          <div class="special-pip" id="pip-2"></div>
+          <div class="special-pip" id="pip-3"></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Boss / Target Status (Top Center) -->
+    <div class="boss-hud hidden" id="boss-hud">
+      <div class="boss-header">
+        <div class="boss-death-markers" id="boss-death-markers">
+          <!-- Populated dynamically -->
+        </div>
+        <div class="boss-name" id="boss-name">CORRUPTED KENSEI</div>
+        <div class="boss-title" id="boss-title">Master of the Obsidian Edge</div>
+      </div>
+      <!-- Boss Health -->
+      <div class="bar-container boss-health-container">
+        <div class="bar-fill boss-health-fill" id="boss-health-fill"></div>
+        <div class="bar-ghost boss-health-ghost" id="boss-health-ghost"></div>
+      </div>
+      <!-- Boss Posture -->
+      <div class="boss-posture-wrapper">
+        <span class="boss-posture-label">POSTURE</span>
+        <div class="bar-container boss-posture-container">
+          <div class="bar-fill boss-posture-fill" id="boss-posture-fill"></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Targeted Enemy Health/Posture (Small floating or sub-bar) -->
+    <div class="target-sub-hud hidden" id="target-sub-hud">
+      <div class="target-name" id="target-name">Swordsman</div>
+      <div class="bar-container target-posture-container">
+        <div class="bar-fill target-posture-fill" id="target-posture-fill"></div>
+      </div>
+      <div class="bar-container target-health-container">
+        <div class="bar-fill target-health-fill" id="target-health-fill"></div>
+      </div>
+    </div>
+
+    <!-- Lock-on Indicator (Screen Space projected) -->
+    <div id="lockon-reticle" class="lockon-reticle hidden">
+      <div class="reticle-outer"></div>
+      <div class="reticle-inner"></div>
+    </div>
+
+    <!-- Danger Kanji / Perilous Attack Warning -->
+    <div id="danger-indicator" class="danger-indicator hidden">
+      <div class="danger-kanji">危</div>
+      <div class="danger-type" id="danger-type">THRUST [E]</div>
+    </div>
+
+    <!-- Execution Prompt -->
+    <div id="execution-prompt" class="execution-prompt hidden">
+      <div class="execution-circle"></div>
+      <div class="execution-text">DEATHBLOW<br><span>[E] EXECUTE</span></div>
+    </div>
+
+    <!-- Action Prompt (e.g. Counter) -->
+    <div id="combat-feedback-banner" class="combat-feedback-banner hidden">
+      <span id="feedback-text">PERFECT DEFLECT</span>
+    </div>
+
+    <!-- Controls Mini-Guide (Bottom Right) -->
+    <div class="controls-cheatsheet" id="controls-cheatsheet">
+      <div class="cheat-row"><span class="key">L-CLICK</span> Attack / Hold Heavy</div>
+      <div class="cheat-row"><span class="key">R-CLICK</span> Deflect / Guard</div>
+      <div class="cheat-row"><span class="key">SPACE</span> Dodge (i-frames)</div>
+      <div class="cheat-row"><span class="key">Q</span> Lock-on Target</div>
+      <div class="cheat-row"><span class="key">E</span> Counter Thrust / Execute</div>
+      <div class="cheat-row"><span class="key">R</span> Special Attack</div>
+      <div class="cheat-row"><span class="key">1</span> Heal Flask</div>
+      <div class="cheat-row"><span class="key">ESC</span> Pause / Menu</div>
+    </div>
+
+    <!-- Arena / Wave Info -->
+    <div class="arena-info" id="arena-info">
+      <div class="arena-title" id="arena-title">TRAINING COURTYARD</div>
+      <div class="arena-objective" id="arena-objective">Defeat the sparring instructor</div>
+    </div>
+  </div>
+
+  <!-- Screen Flash FX -->
+  <div id="flash-overlay" class="flash-overlay"></div>
+  <div id="vignette-overlay" class="vignette-overlay"></div>
+  <div id="cinematic-bars" class="cinematic-bars hidden">
+    <div class="cinematic-bar bar-top"></div>
+    <div class="cinematic-bar bar-bottom"></div>
+  </div>
+
+  <!-- UI Overlays / Menus -->
+  <div id="menu-overlay" class="menu-overlay">
+    <!-- Main Menu -->
+    <div id="main-menu" class="menu-screen">
+      <div class="title-container">
+        <h1 class="game-title">ZANSHIN</h1>
+        <h2 class="game-subtitle">BLADE OF RESOLVE</h2>
+        <div class="title-kanji">残心 — 刃の覚悟</div>
+        <p class="tagline">ATTACK • DEFLECT • BREAK POSTURE • EXECUTE</p>
+      </div>
+
+      <div class="menu-buttons">
+        <button class="btn btn-primary" id="btn-campaign">CAMPAIGN GAUNTLET</button>
+        <button class="btn" id="btn-boss-rush">BOSS RUSH MODE</button>
+        <button class="btn" id="btn-training">TRAINING DOJO</button>
+        <button class="btn" id="btn-arena-select">ARENA SELECT</button>
+        <button class="btn" id="btn-stats">COMBAT ARCHIVES</button>
+        <button class="btn" id="btn-settings">SETTINGS</button>
+      </div>
+
+      <div class="menu-footer">
+        A 3D Precision Combat Experience Inspired by Sekiro
+      </div>
+    </div>
+
+    <!-- Arena Select Menu -->
+    <div id="arena-menu" class="menu-screen hidden">
+      <h2 class="menu-title">SELECT BATTLEGROUND</h2>
+      <div class="arena-grid">
+        <div class="arena-card" data-arena="training">
+          <div class="arena-card-title">1. Training Courtyard</div>
+          <div class="arena-card-desc">Master deflection timing, posture breaking, and thrust counters.</div>
+        </div>
+        <div class="arena-card" data-arena="forest">
+          <div class="arena-card-title">2. Whispering Bamboo Forest</div>
+          <div class="arena-card-desc">Fast-paced duelists and spear masters among ancient misty stones.</div>
+        </div>
+        <div class="arena-card" data-arena="temple">
+          <div class="arena-card-title">3. Sunken Temple of Ash</div>
+          <div class="arena-card-desc">Armored juggernauts, sweep attacks, and relentless heavy warriors.</div>
+        </div>
+        <div class="arena-card" data-arena="rooftops">
+          <div class="arena-card-title">4. Storm-Swept Pagoda Rooftops</div>
+          <div class="arena-card-desc">Elite duelist gauntlet in thunderous rain.</div>
+        </div>
+        <div class="arena-card" data-arena="boss">
+          <div class="arena-card-title">5. Moonlit Sovereign's Courtyard</div>
+          <div class="arena-card-desc">Multi-phase climactic duel with the Sovereign of Blades.</div>
+        </div>
+      </div>
+      <button class="btn btn-secondary back-btn" data-target="main-menu">BACK</button>
+    </div>
+
+    <!-- Training Setup Menu -->
+    <div id="training-menu" class="menu-screen hidden">
+      <h2 class="menu-title">TRAINING DOJO</h2>
+      <div class="training-options">
+        <div class="training-group">
+          <label>Opponent Archetype:</label>
+          <select id="training-enemy-type">
+            <option value="swordsman">Sparring Swordsman (Balanced)</option>
+            <option value="duelist">Aggressive Duelist (Rapid Chains)</option>
+            <option value="spear">Spear Master (Thrust Counter Practice)</option>
+            <option value="heavy">Heavy Kanabo Brute (Sweeps & Super Armor)</option>
+            <option value="assassin">Shadow Assassin (Fast Dodges & Flurry)</option>
+            <option value="knight">Elite Knight (Master Deflector)</option>
+            <option value="monk">Ascetic Monk (Unarmed Stances)</option>
+            <option value="boss">Lord Genjiro (Final Boss Practice)</option>
+          </select>
+        </div>
+        <div class="training-group">
+          <label>Combat Assist Mode:</label>
+          <select id="training-drill">
+            <option value="free">Free Sparring</option>
+            <option value="deflect">Deflection Rhythm Drill</option>
+            <option value="thrust">Thrust Counter (Mikiri) Drill</option>
+            <option value="sweep">Sweep Evade Drill</option>
+          </select>
+        </div>
+        <div class="training-group-checkboxes">
+          <label><input type="checkbox" id="training-invulnerable-player" checked /> Infinite Player Health</label>
+          <label><input type="checkbox" id="training-show-frame-data" checked /> Display Timing & Hitbox Feedback</label>
+          <label><input type="checkbox" id="training-slow-motion" /> 50% Practice Speed</label>
+        </div>
+      </div>
+      <div class="menu-buttons horizontal">
+        <button class="btn btn-primary" id="btn-start-training">ENTER DOJO</button>
+        <button class="btn btn-secondary back-btn" data-target="main-menu">BACK</button>
+      </div>
+    </div>
+
+    <!-- Pause Menu -->
+    <div id="pause-menu" class="menu-screen hidden">
+      <h2 class="menu-title">PAUSED</h2>
+      <div class="menu-buttons">
+        <button class="btn btn-primary" id="btn-resume">RESUME BATTLE</button>
+        <button class="btn" id="btn-restart-encounter">RESTART ENCOUNTER</button>
+        <button class="btn" id="btn-pause-settings">SETTINGS</button>
+        <button class="btn btn-secondary" id="btn-quit-to-menu">QUIT TO MAIN MENU</button>
+      </div>
+    </div>
+
+    <!-- Defeat Screen -->
+    <div id="defeat-screen" class="menu-screen hidden defeat-theme">
+      <div class="defeat-kanji">死</div>
+      <h1 class="defeat-title">DEFEATED</h1>
+      <p class="defeat-quote">"Hesitation is defeat. Read the blade. Match the rhythm."</p>
+      <div class="menu-buttons horizontal">
+        <button class="btn btn-primary" id="btn-retry">RETRY IMMEDIATELY [R]</button>
+        <button class="btn btn-secondary" id="btn-defeat-menu">MAIN MENU</button>
+      </div>
+    </div>
+
+    <!-- Victory Screen -->
+    <div id="victory-screen" class="menu-screen hidden victory-theme">
+      <div class="victory-kanji">勝</div>
+      <h1 class="victory-title">ENCOUNTER RESOLVED</h1>
+      <div class="victory-stats" id="victory-stats-content">
+        <!-- Filled dynamically -->
+      </div>
+      <div class="menu-buttons horizontal">
+        <button class="btn btn-primary" id="btn-victory-next">PROCEED TO NEXT ARENA</button>
+        <button class="btn btn-secondary" id="btn-victory-menu">MAIN MENU</button>
+      </div>
+    </div>
+
+    <!-- Stats Screen -->
+    <div id="stats-screen" class="menu-screen hidden">
+      <h2 class="menu-title">COMBAT ARCHIVES</h2>
+      <div class="stats-table" id="all-time-stats">
+        <!-- Filled dynamically -->
+      </div>
+      <button class="btn btn-secondary back-btn" data-target="main-menu">BACK</button>
+    </div>
+
+    <!-- Settings Screen -->
+    <div id="settings-screen" class="menu-screen hidden">
+      <h2 class="menu-title">COMBAT SETTINGS</h2>
+      <div class="settings-form">
+        <div class="setting-row">
+          <label>Difficulty:</label>
+          <select id="setting-difficulty">
+            <option value="easy">Gentle Blade (Larger Deflect Windows)</option>
+            <option value="normal" selected>True Resolve (Authentic Precision)</option>
+            <option value="hard">Master of Iron (Strictest Deflect & Aggression)</option>
+          </select>
+        </div>
+        <div class="setting-row">
+          <label>Master Volume:</label>
+          <input type="range" id="setting-master-vol" min="0" max="100" value="80" />
+        </div>
+        <div class="setting-row">
+          <label>SFX / Clash Impact:</label>
+          <input type="range" id="setting-sfx-vol" min="0" max="100" value="90" />
+        </div>
+        <div class="setting-row">
+          <label>Music / Ambience:</label>
+          <input type="range" id="setting-music-vol" min="0" max="100" value="60" />
+        </div>
+        <div class="setting-row">
+          <label>Mouse Sensitivity:</label>
+          <input type="range" id="setting-mouse-sens" min="1" max="10" value="5" />
+        </div>
+        <div class="setting-row">
+          <label>Camera Shake:</label>
+          <input type="checkbox" id="setting-screenshake" checked />
+        </div>
+        <div class="setting-row">
+          <label>Hit-Stop Slow Motion:</label>
+          <input type="checkbox" id="setting-hitstop" checked />
+        </div>
+        <div class="setting-row">
+          <label>Lock-On Assist Pitch:</label>
+          <input type="checkbox" id="setting-lockon-assist" checked />
+        </div>
+      </div>
+      <button class="btn btn-secondary back-btn" data-target="main-menu">SAVE & BACK</button>
+    </div>
+  </div>
+
+  <!-- Debug Overlay (Toggle with F1 or ~) -->
+  <div id="debug-overlay" class="debug-overlay hidden">
+    <div class="debug-title">ZANSHIN DEBUG CONSOLE [F1]</div>
+    <div id="debug-info">FPS: 60 | State: IDLE</div>
+    <div class="debug-actions">
+      <button id="dbg-god">Toggle God Mode</button>
+      <button id="dbg-posture">Max Enemy Posture</button>
+      <button id="dbg-slow">Toggle 0.2x Speed</button>
+      <button id="dbg-spawn">Spawn Random Enemy</button>
+      <button id="dbg-hitbox">Toggle Hitbox Visualizer</button>
+    </div>
+  </div>
+
+  <script type="module" src="/src/main.ts"></script>
+</body>
+</html>
