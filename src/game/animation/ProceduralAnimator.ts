@@ -13,12 +13,14 @@ export type AnimState =
   | 'heavy_charge'
   | 'heavy_strike'
   | 'guard'
-  | 'deflect_react'
+  | 'deflect_parry_player'
+  | 'deflect_parry_enemy'
+  | 'mikiri_stomp'
+  | 'mikiri_victim'
   | 'stagger'
   | 'posture_broken'
   | 'thrust'
   | 'sweep'
-  | 'counter_react'
   | 'execution_attacker'
   | 'execution_victim'
   | 'special_slash'
@@ -65,8 +67,17 @@ export class ProceduralAnimator {
       case 'guard':
         this.animateGuard(t);
         break;
-      case 'deflect_react':
-        this.animateDeflectReact(t);
+      case 'deflect_parry_player':
+        this.animateDeflectParryPlayer(t);
+        break;
+      case 'deflect_parry_enemy':
+        this.animateDeflectParryEnemy(t);
+        break;
+      case 'mikiri_stomp':
+        this.animateMikiriStomp(t);
+        break;
+      case 'mikiri_victim':
+        this.animateMikiriVictim(t);
         break;
       case 'attack1':
         this.animateAttack1(t);
@@ -88,9 +99,6 @@ export class ProceduralAnimator {
         break;
       case 'sweep':
         this.animateSweep(t);
-        break;
-      case 'counter_react':
-        this.animateCounterReact(t);
         break;
       case 'stagger':
         this.animateStagger(t);
@@ -122,7 +130,6 @@ export class ProceduralAnimator {
     j.chest.rotation.set(0.06 + breath * 0.5, 0, 0);
     j.head.rotation.set(-0.12, -0.1, 0);
 
-    // Martial alert stance
     j.leftShoulder.rotation.set(0.3, 0.25, 0.15);
     j.leftArm.rotation.set(0.35, 0.1, -0.3);
     j.leftForearm.rotation.set(-0.9, 0.2, 0.5);
@@ -131,10 +138,8 @@ export class ProceduralAnimator {
     j.rightArm.rotation.set(0.45, -0.2, 0.25);
     j.rightForearm.rotation.set(-1.1, 0, -0.3);
 
-    // Blade angled ready in front of waist
     j.weapon.rotation.set(-0.7, 0.35, 0.4);
 
-    // Stance legs
     j.leftThigh.rotation.set(-0.15, 0, -0.1);
     j.leftShin.rotation.set(0.3, 0, 0);
     j.rightThigh.rotation.set(0.18, 0, 0.1);
@@ -152,14 +157,12 @@ export class ProceduralAnimator {
     j.chest.rotation.set(0.05, cosP * 0.15, 0);
     j.head.rotation.set(-forwardLean * 0.75, -cosP * 0.1, 0);
 
-    // Legs
     j.leftThigh.rotation.set(sinP * legSwing, 0, 0);
     j.leftShin.rotation.set(sinP > 0 ? sinP * legSwing * 1.3 : 0.15, 0, 0);
 
     j.rightThigh.rotation.set(-sinP * legSwing, 0, 0);
     j.rightShin.rotation.set(-sinP > 0 ? -sinP * legSwing * 1.3 : 0.15, 0, 0);
 
-    // Arms
     j.leftArm.rotation.set(-sinP * armSwing, 0, -0.15);
     j.leftForearm.rotation.set(-0.6 + Math.max(0, -sinP * 0.5), 0, 0);
 
@@ -172,7 +175,6 @@ export class ProceduralAnimator {
     const j = this.rig.joints;
     const progress = Math.min(1.0, t / 0.38);
 
-    // Fast agile low slip
     const dip = Math.sin(progress * Math.PI) * 0.4;
     j.hips.position.y = 0.95 - dip;
     j.spine.rotation.set(0.5, Math.sin(progress * Math.PI) * 0.45, 0);
@@ -189,23 +191,19 @@ export class ProceduralAnimator {
 
   private animateGuard(t: number): void {
     const j = this.rig.joints;
-    // Firm, rooted, two-handed angled katana guard
     j.hips.position.y = 0.90;
     j.spine.rotation.set(0.12, 0.22, 0);
     j.chest.rotation.set(0.1, 0.25, 0);
     j.head.rotation.set(-0.1, -0.2, 0);
 
-    // Left hand bracing hilt
     j.leftShoulder.rotation.set(0.4, 0.4, 0);
     j.leftArm.rotation.set(0.7, 0.5, -0.2);
     j.leftForearm.rotation.set(-1.45, 0.3, 0.6);
 
-    // Right arm holding blade crosswise
     j.rightShoulder.rotation.set(0.3, -0.3, 0);
     j.rightArm.rotation.set(0.7, -0.4, 0.3);
     j.rightForearm.rotation.set(-1.6, -0.3, -0.4);
 
-    // Angled blade across chest ready to deflect
     j.weapon.rotation.set(0.75, -0.85, 0.8);
 
     j.leftThigh.rotation.set(-0.35, 0, -0.2);
@@ -214,26 +212,171 @@ export class ProceduralAnimator {
     j.rightShin.rotation.set(0.4, 0, 0);
   }
 
-  private animateDeflectReact(t: number): void {
+  /**
+   * PLAYER PERFECT DEFLECTION PARRY
+   * Sharp, aggressive upward & forward blade sweep locking arms at impact with resonant sparks!
+   */
+  private animateDeflectParryPlayer(t: number): void {
     const j = this.rig.joints;
-    const progress = Math.min(1.0, t / 0.22);
-    const snap = Math.sin(progress * Math.PI);
+    const duration = 0.28;
+    const p = Math.min(1.0, t / duration);
 
-    // Violent kinetic recoil upon clashing steel
-    j.hips.position.y = 0.92 + snap * 0.05;
-    j.spine.rotation.set(-snap * 0.3, snap * 0.22, 0);
-    j.chest.rotation.set(-snap * 0.35, snap * 0.28, 0);
-    j.head.rotation.set(snap * 0.15, -snap * 0.2, 0);
+    if (p < 0.35) {
+      // 1. Violent snap forward to meet the enemy blade
+      const sub = p / 0.35;
+      j.hips.position.y = 0.92;
+      j.spine.rotation.set(0.18, 0.35 * sub, 0);
+      j.chest.rotation.set(0.15, 0.4 * sub, 0);
+      j.head.rotation.set(-0.15, -0.25 * sub, 0);
 
-    // Arms lock outward absorbing impact
-    j.rightArm.rotation.set(0.9 - snap * 0.4, -0.3, 0.4);
-    j.rightForearm.rotation.set(-1.8 + snap * 0.6, -0.3, -0.5);
-    j.weapon.rotation.set(0.9 - snap * 0.5, -0.7, 0.9 + snap * 0.4);
+      // Two hands driving blade up and out
+      j.rightArm.rotation.set(0.8 + 0.4 * sub, -0.3, 0.4);
+      j.rightForearm.rotation.set(-1.6 + 0.3 * sub, -0.2, -0.3);
+      j.leftArm.rotation.set(0.7 + 0.3 * sub, 0.4, -0.2);
+      j.leftForearm.rotation.set(-1.4, 0.2, 0.4);
+
+      // Angled cross-blade deflection position
+      j.weapon.rotation.set(0.9 + 0.3 * sub, -0.9, 0.95);
+    } else {
+      // 2. High-tension recoil holding ground
+      const sub = (p - 0.35) / 0.65;
+      j.hips.position.y = 0.92;
+      j.spine.rotation.set(0.18 - 0.08 * sub, 0.35 - 0.15 * sub, 0);
+      j.rightArm.rotation.set(1.2 - 0.4 * sub, -0.3, 0.4);
+      j.weapon.rotation.set(1.2 - 0.4 * sub, -0.9, 0.95);
+    }
   }
 
   /**
-   * ATTACK 1: Powerful Horizontal Cleave (Ichimonji Slash)
-   * Wide, fast, satisfying whip cut with torso rotation and deep forward step!
+   * ENEMY ACTIVE GUARD & PARRY CLASH
+   * Enemy firmly raises their katana in front of chest, repelling player attacks with steel sparks!
+   */
+  private animateDeflectParryEnemy(t: number): void {
+    const j = this.rig.joints;
+    const duration = 0.28;
+    const p = Math.min(1.0, t / duration);
+
+    const snap = Math.sin(p * Math.PI);
+    j.hips.position.y = 0.91 - snap * 0.04;
+    j.spine.rotation.set(0.15, -0.3 * snap, 0);
+    j.chest.rotation.set(0.12, -0.35 * snap, 0);
+
+    // Two-handed braced diagonal block
+    j.rightArm.rotation.set(0.85, -0.5, 0.35);
+    j.rightForearm.rotation.set(-1.6, -0.2, -0.3);
+    j.leftArm.rotation.set(0.7, 0.4, -0.2);
+    j.leftForearm.rotation.set(-1.4, 0.2, 0.4);
+
+    j.weapon.rotation.set(0.85, -0.75, 0.85);
+
+    j.leftThigh.rotation.set(-0.3, 0, -0.15);
+    j.rightThigh.rotation.set(0.2, 0, 0.15);
+  }
+
+  /**
+   * MIKIRI COUNTER: PLAYER BLADE STOMP
+   * The signature Sekiro technique:
+   * 1. Explosive forward dash into the enemy thrust.
+   * 2. High stomping knee drive slamming lead boot down to pin the weapon flat to the earth!
+   * 3. Dominant standing posture staring down the immobilized opponent.
+   */
+  private animateMikiriStomp(t: number): void {
+    const j = this.rig.joints;
+    const duration = 0.75;
+    const p = Math.min(1.0, t / duration);
+
+    if (p < 0.25) {
+      // 1. Surging forward step & raising lead right leg high
+      const sub = p / 0.25;
+      j.hips.position.y = 0.95 + 0.15 * sub;
+      j.spine.rotation.set(0.25 * sub, 0, 0);
+      j.head.rotation.set(-0.25 * sub, 0, 0); // Focus gaze down on oncoming blade
+
+      // Right leg lifts high in preparation for devastating stomp
+      j.rightThigh.rotation.set(1.4 * sub, 0, 0);
+      j.rightShin.rotation.set(1.5 * sub, 0, 0);
+
+      // Support left leg bent
+      j.leftThigh.rotation.set(-0.4 * sub, 0, 0);
+      j.leftShin.rotation.set(0.6 * sub, 0, 0);
+
+      // Hands ready on katana hilt at waist
+      j.rightArm.rotation.set(0.3, -0.5, 0.3);
+      j.rightForearm.rotation.set(-1.1, 0, 0);
+      j.leftArm.rotation.set(0.3, 0.4, -0.2);
+      j.leftForearm.rotation.set(-0.9, 0, 0);
+      j.weapon.rotation.set(-0.5, 0.2, 0.3);
+    } else if (p < 0.65) {
+      // 2. THE STOMP! Lead foot crashes down onto blade, pinning it to the earth!
+      const sub = (p - 0.25) / 0.4;
+      const easeStomp = 1 - Math.pow(1 - sub, 4);
+
+      j.hips.position.y = 1.10 - 0.28 * easeStomp; // Body drives down
+      j.spine.rotation.set(0.35, 0, 0);
+      j.head.rotation.set(-0.3, 0, 0);
+
+      // Right foot planted firmly forward on the spear/katana
+      j.rightThigh.rotation.set(1.4 - 1.8 * easeStomp, 0, 0.1);
+      j.rightShin.rotation.set(1.5 - 1.3 * easeStomp, 0, 0);
+
+      j.leftThigh.rotation.set(-0.5, 0, -0.15);
+      j.leftShin.rotation.set(0.8, 0, 0);
+
+      // Weapon poised ready for counter
+      j.rightArm.rotation.set(0.5, -0.3, 0.2);
+      j.weapon.rotation.set(-0.3, 0.1, 0.2);
+    } else {
+      // 3. Lingering dominant stance before releasing
+      const sub = (p - 0.65) / 0.35;
+      j.hips.position.y = 0.82 + 0.13 * sub;
+      j.spine.rotation.set(0.35 - 0.25 * sub, 0, 0);
+    }
+  }
+
+  /**
+   * MIKIRI COUNTER: ENEMY THRUST VICTIM
+   * Enemy's thrust is brutally stomped to the floor; pulled forward off-balance and pinned!
+   */
+  private animateMikiriVictim(t: number): void {
+    const j = this.rig.joints;
+    const duration = 0.75;
+    const p = Math.min(1.0, t / duration);
+
+    if (p < 0.25) {
+      // Thrust is suddenly intercepted and slammed down
+      const sub = p / 0.25;
+      j.hips.position.y = 0.95 - 0.22 * sub;
+      j.spine.rotation.set(0.2 + 0.45 * sub, 0, 0);
+      j.head.rotation.set(0.4 * sub, 0, 0);
+
+      // Arms wrenched down towards floor
+      j.rightArm.rotation.set(0.8 + 0.5 * sub, 0, 0);
+      j.rightForearm.rotation.set(0.4 * sub, 0, 0);
+      j.weapon.rotation.set(-1.4 * sub, 0, 0); // Weapon pointed down into floor
+    } else if (p < 0.7) {
+      // Pinned and helpless
+      j.hips.position.y = 0.73;
+      j.spine.rotation.set(0.65, 0, 0);
+      j.head.rotation.set(0.45, 0, 0);
+
+      j.rightArm.rotation.set(1.3, 0, 0);
+      j.weapon.rotation.set(-1.45, 0, 0);
+
+      j.leftThigh.rotation.set(-0.6, 0, 0);
+      j.leftShin.rotation.set(0.9, 0, 0);
+      j.rightThigh.rotation.set(0.4, 0, 0);
+      j.rightShin.rotation.set(0.5, 0, 0);
+    } else {
+      // Staggering back out of pin
+      const sub = (p - 0.7) / 0.3;
+      j.hips.position.y = 0.73 + 0.2 * sub;
+      j.spine.rotation.set(0.65 - 0.4 * sub, 0, 0);
+      j.weapon.rotation.set(-1.45 + 0.8 * sub, 0, 0);
+    }
+  }
+
+  /**
+   * ATTACK 1: Ichimonji Cleave
    */
   private animateAttack1(t: number): void {
     const j = this.rig.joints;
@@ -241,7 +384,6 @@ export class ProceduralAnimator {
     const p = Math.min(1.0, t / duration);
 
     if (p < 0.25) {
-      // 1. Anticipation: Deep coil to right shoulder
       const sub = p / 0.25;
       j.hips.position.y = 0.95 - 0.08 * sub;
       j.spine.rotation.set(0.1, -0.85 * sub, 0);
@@ -258,28 +400,24 @@ export class ProceduralAnimator {
       j.rightThigh.rotation.set(0.3 * sub, 0, 0.2 * sub);
       j.leftThigh.rotation.set(-0.3 * sub, 0, -0.1);
     } else if (p < 0.65) {
-      // 2. Strike: Explosive whip cut through target
       const sub = (p - 0.25) / 0.4;
-      const easeCut = 1 - Math.pow(1 - sub, 3); // Fast ease-out cut
+      const easeCut = 1 - Math.pow(1 - sub, 3);
 
       j.hips.position.y = 0.87 - 0.06 * Math.sin(sub * Math.PI);
       j.spine.rotation.set(0.15, -0.85 + 1.8 * easeCut, 0);
       j.chest.rotation.set(0.12, -0.95 + 2.0 * easeCut, 0);
       j.head.rotation.set(-0.1, 0.6 - 1.2 * easeCut, 0);
 
-      // Sword sweeps full horizontal arc in front of body
       j.rightArm.rotation.set(0.4 - 0.3 * easeCut, -1.1 + 2.2 * easeCut, 0.8 - 1.2 * easeCut);
       j.rightForearm.rotation.set(-1.3 + 0.8 * easeCut, 0.6 * easeCut, -0.4 * easeCut);
       j.weapon.rotation.set(-0.4, -0.7 + 2.4 * easeCut, 0.3);
 
-      // Off-hand swings back for power & counterbalance
       j.leftArm.rotation.set(0.2 - 0.5 * easeCut, -0.6 * easeCut, -0.5);
       j.leftForearm.rotation.set(-0.6 - 0.4 * easeCut, 0, 0);
 
       j.leftThigh.rotation.set(-0.3 + 0.5 * easeCut, 0, 0);
       j.rightThigh.rotation.set(0.3 - 0.5 * easeCut, 0, 0);
     } else {
-      // 3. Follow-through & Recovery
       const sub = (p - 0.65) / 0.35;
       j.hips.position.y = 0.87 + 0.08 * sub;
       j.spine.rotation.set(0.15 - 0.07 * sub, 0.95 - 0.5 * sub, 0);
@@ -289,7 +427,7 @@ export class ProceduralAnimator {
   }
 
   /**
-   * ATTACK 2: Rising Dragon Diagonal Cleave (Bottom-Left to Top-Right)
+   * ATTACK 2: Rising Dragon Diagonal Cleave
    */
   private animateAttack2(t: number): void {
     const j = this.rig.joints;
@@ -297,7 +435,6 @@ export class ProceduralAnimator {
     const p = Math.min(1.0, t / duration);
 
     if (p < 0.22) {
-      // Low left coil
       const sub = p / 0.22;
       j.hips.position.y = 0.95 - 0.1 * sub;
       j.spine.rotation.set(0.25 * sub, 0.75 * sub, 0);
@@ -307,7 +444,6 @@ export class ProceduralAnimator {
       j.rightForearm.rotation.set(-1.1 * sub, 0, 0);
       j.weapon.rotation.set(-1.0 * sub, 0.6 * sub, -0.6 * sub);
     } else if (p < 0.65) {
-      // Explosive rising upward cleave
       const sub = (p - 0.22) / 0.43;
       const easeCut = 1 - Math.pow(1 - sub, 3);
 
@@ -319,14 +455,13 @@ export class ProceduralAnimator {
       j.rightForearm.rotation.set(-1.1 + 0.6 * easeCut, 0, 0);
       j.weapon.rotation.set(-1.0 + 2.2 * easeCut, 0.6 - 1.4 * easeCut, 0.7);
     } else {
-      // Recovery
       const sub = (p - 0.65) / 0.35;
       j.spine.rotation.set(-0.15 + 0.15 * sub, -0.85 + 0.5 * sub, 0);
     }
   }
 
   /**
-   * ATTACK 3: Overhead Execution Cleave (Devastating Downward Cleave)
+   * ATTACK 3: Overhead Execution Cleave
    */
   private animateAttack3(t: number): void {
     const j = this.rig.joints;
@@ -334,7 +469,6 @@ export class ProceduralAnimator {
     const p = Math.min(1.0, t / duration);
 
     if (p < 0.28) {
-      // High two-handed overhead raise with arching back
       const sub = p / 0.28;
       j.hips.position.y = 0.95 + 0.12 * sub;
       j.spine.rotation.set(-0.35 * sub, 0, 0);
@@ -345,7 +479,6 @@ export class ProceduralAnimator {
       j.rightForearm.rotation.set(-0.6 * sub, 0, 0);
       j.weapon.rotation.set(1.5 * sub, 0, 0);
     } else if (p < 0.62) {
-      // Brutal supersonic downward slam
       const sub = (p - 0.28) / 0.34;
       const easeCut = 1 - Math.pow(1 - sub, 3);
 
@@ -361,7 +494,6 @@ export class ProceduralAnimator {
       j.leftThigh.rotation.set(-0.6 * easeCut, 0, 0);
       j.leftShin.rotation.set(1.1 * easeCut, 0, 0);
     } else {
-      // Heavy impact recoil & recovery
       const sub = (p - 0.62) / 0.38;
       j.hips.position.y = 0.75 + 0.2 * sub;
       j.spine.rotation.set(0.5 - 0.42 * sub, 0, 0);
@@ -374,7 +506,6 @@ export class ProceduralAnimator {
     const p = Math.min(1.0, t / 0.8);
     const shake = Math.sin(t * 35) * 0.03 * p;
 
-    // Deep trembling crouched coil
     j.hips.position.y = 0.80;
     j.spine.rotation.set(0.35, -0.85, 0);
     j.head.rotation.set(-0.25, 0.75, 0);
@@ -394,7 +525,6 @@ export class ProceduralAnimator {
     const duration = 0.45;
     const p = Math.min(1.0, t / duration);
 
-    // Supersonic forward drive and heavy cleave
     const lunge = Math.sin(p * Math.PI * 0.85);
     j.hips.position.y = 0.82 + lunge * 0.12;
     j.spine.rotation.set(0.25, -0.85 + 1.8 * p, 0);
@@ -410,13 +540,11 @@ export class ProceduralAnimator {
     const p = Math.min(1.0, t / duration);
 
     if (p < 0.32) {
-      // Long recognizable telegraph pull-back
       const sub = p / 0.32;
       j.spine.rotation.set(0.15, -0.4 * sub, 0);
       j.rightArm.rotation.set(0.5 * sub, -0.8 * sub, 0);
       j.weapon.rotation.set(0, 0, 0);
     } else if (p < 0.65) {
-      // Piercing supersonic lunge
       const sub = (p - 0.32) / 0.33;
       j.spine.rotation.set(0.3, 0.3 * sub, 0);
       j.rightArm.rotation.set(0.9, 0, 0);
@@ -433,19 +561,10 @@ export class ProceduralAnimator {
     const duration = 0.65;
     const p = Math.min(1.0, t / duration);
 
-    // Deep rotational sweep
     j.hips.position.y = 0.72;
     j.spine.rotation.set(0.4, p * Math.PI * 2, 0);
     j.rightArm.rotation.set(0.15, 0, 0);
     j.weapon.rotation.set(-1.0, 0, 0);
-  }
-
-  private animateCounterReact(t: number): void {
-    const j = this.rig.joints;
-    j.hips.position.y = 0.72;
-    j.spine.rotation.set(0.45, 0, 0);
-    j.rightArm.rotation.set(0.85, 0, 0);
-    j.weapon.rotation.set(-1.2, 0, 0); // blade pinned firmly to ground
   }
 
   private animateStagger(t: number): void {
@@ -453,7 +572,6 @@ export class ProceduralAnimator {
     const p = Math.min(1.0, t / 0.38);
     const snap = Math.sin(p * Math.PI);
 
-    // Violent flinch
     j.hips.position.y = 0.92 - snap * 0.08;
     j.spine.rotation.set(-0.45 * snap, snap * 0.25, 0);
     j.head.rotation.set(-0.5 * snap, 0, 0);
@@ -467,7 +585,6 @@ export class ProceduralAnimator {
     const p = Math.min(1.0, t / 0.45);
     const pant = Math.sin(t * 4.5) * 0.06;
 
-    // Dropped to one knee, sword hanging down
     j.hips.position.y = 0.62 - (1.0 - p) * 0.3;
     j.spine.rotation.set(0.5 + pant, 0, 0);
     j.head.rotation.set(0.35, 0, 0);

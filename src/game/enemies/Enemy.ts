@@ -13,6 +13,8 @@ export type EnemyAIState =
   | 'CIRCLE'
   | 'ATTACK'
   | 'DEFEND'
+  | 'DEFLECT_CLASH'
+  | 'MIKIRI_VICTIM'
   | 'DODGE'
   | 'STAGGER'
   | 'POSTURE_BREAK'
@@ -147,6 +149,22 @@ export class Enemy implements Combatant {
 
       case 'DEFEND':
         this.updateDefendState(delta, player);
+        break;
+
+      case 'DEFLECT_CLASH':
+        if (this.stateTimer >= 0.28) {
+          this.transitionTo('IDLE');
+        }
+        break;
+
+      case 'MIKIRI_VICTIM':
+        if (this.stateTimer >= 0.75) {
+          if (this.posture >= this.maxPosture) {
+            this.transitionTo('POSTURE_BREAK');
+          } else {
+            this.transitionTo('IDLE');
+          }
+        }
         break;
 
       case 'DODGE':
@@ -392,6 +410,8 @@ export class Enemy implements Combatant {
       case 'APPROACH': anim = 'run'; break;
       case 'CIRCLE': anim = 'walk'; break;
       case 'DEFEND': anim = 'guard'; break;
+      case 'DEFLECT_CLASH': anim = 'deflect_parry_enemy'; break;
+      case 'MIKIRI_VICTIM': anim = 'mikiri_victim'; break;
       case 'DODGE': anim = 'dodge'; break;
       case 'STAGGER': anim = 'stagger'; break;
       case 'POSTURE_BREAK': anim = 'posture_broken'; break;
@@ -402,19 +422,38 @@ export class Enemy implements Combatant {
 
   public onTakeDamage(amount: number, postureAmount: number, isCleanHit: boolean): void {
     if (isCleanHit) {
+      this.consecutiveBlockedAttacks = 0;
       this.transitionTo('STAGGER');
     }
   }
 
   public onDeflectSuccess(): void {
-    this.animator.setState('deflect_react');
+    this.transitionTo('DEFLECT_CLASH');
+    this.consecutiveBlockedAttacks++;
+
+    // After blocking 2 strikes, retaliate with a swift counter-attack!
+    if (this.consecutiveBlockedAttacks >= 2) {
+      this.consecutiveBlockedAttacks = 0;
+      setTimeout(() => {
+        if (!this.isDead && !this.isPostureBroken && this.aiState !== 'MIKIRI_VICTIM') {
+          this.startAttackSequence();
+        }
+      }, 240);
+    }
+  }
+
+  public onMikiriVictim(): void {
+    this.isAttackActiveWindow = false;
+    this.swordTrail.setActive(false);
+    this.posture = Math.min(this.maxPosture, this.posture + 60);
+    this.transitionTo('MIKIRI_VICTIM');
   }
 
   public onDeflectedByOpponent(): void {
     // When enemy attack is deflected by player, enemy recoils!
-    this.animator.setState('deflect_react');
+    this.animator.setState('deflect_parry_enemy');
     this.stateTimer = 0;
-    this.attackCooldownTimer = 0.8;
+    this.attackCooldownTimer = 0.7;
   }
 
   public onPostureBreak(): void {
@@ -422,7 +461,6 @@ export class Enemy implements Combatant {
   }
 
   public onCounterSuccess(): void {
-    this.animator.setState('counter_react');
-    this.stateTimer = 0;
+    this.onMikiriVictim();
   }
 }

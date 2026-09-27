@@ -23,6 +23,8 @@ export type PlayerCombatState =
   | 'HEAVY_STRIKE'
   | 'GUARD'
   | 'DEFLECT_REACT'
+  | 'DEFLECT_PARRY'
+  | 'MIKIRI_COUNTER'
   | 'STAGGER'
   | 'POSTURE_BREAK'
   | 'EXECUTION'
@@ -177,6 +179,24 @@ export class Player implements Combatant {
       case 'DEFLECT_REACT':
         if (this.stateTimer >= 0.22) {
           this.transitionTo(input.state.guardHeld ? 'GUARD' : 'IDLE');
+        }
+        break;
+
+      case 'DEFLECT_PARRY':
+        // Allow immediate cancel into riposte counter attack
+        if (input.state.attackPressed || buffered === 'attack') {
+          this.transitionTo('ATTACK_1');
+          return;
+        }
+        if (this.stateTimer >= 0.28) {
+          this.transitionTo(input.state.guardHeld ? 'GUARD' : 'IDLE');
+        }
+        break;
+
+      case 'MIKIRI_COUNTER':
+        // Player holds enemy blade pinned to floor
+        if (this.stateTimer >= 0.75) {
+          this.transitionTo('IDLE');
         }
         break;
 
@@ -595,7 +615,9 @@ export class Player implements Combatant {
       case 'SPRINT': anim = 'sprint'; break;
       case 'DODGE': anim = 'dodge'; break;
       case 'GUARD': anim = 'guard'; break;
-      case 'DEFLECT_REACT': anim = 'deflect_react'; break;
+      case 'DEFLECT_REACT': anim = 'deflect_parry_player'; break;
+      case 'DEFLECT_PARRY': anim = 'deflect_parry_player'; break;
+      case 'MIKIRI_COUNTER': anim = 'mikiri_stomp'; break;
       case 'ATTACK_1': anim = 'attack1'; break;
       case 'ATTACK_2': anim = 'attack2'; break;
       case 'ATTACK_3': anim = 'attack3'; break;
@@ -617,8 +639,28 @@ export class Player implements Combatant {
   }
 
   public onDeflectSuccess(): void {
-    this.animator.setState('deflect_react');
+    this.transitionTo('DEFLECT_PARRY');
     this.addSpecialProgress(COMBAT_CONFIG.PLAYER_SPECIAL_PER_DEFLECT);
+  }
+
+  public performMikiriCounter(enemy: Combatant, particles: ParticleSystem, camera: CombatCamera): void {
+    const toEnemy = enemy.position.clone().sub(this.position).setY(0);
+    this.facingAngle = Math.atan2(toEnemy.x, toEnemy.z);
+    this.rig.root.rotation.y = this.facingAngle;
+
+    // Surge forward right onto the oncoming blade
+    const lungeDist = Math.max(0.5, toEnemy.length() - 1.0);
+    const step = toEnemy.clone().normalize().multiplyScalar(lungeDist);
+    this.position.add(step);
+
+    this.isDodging = true;
+    this.dodgeIFrameTimer = 0.8;
+    this.transitionTo('MIKIRI_COUNTER');
+
+    AudioEngine.playThrustCounter();
+    camera.addTrauma(COMBAT_CONFIG.SHAKE_HEAVY);
+    camera.pulseZoom(3.2, 350);
+    particles.spawnCounterImpact(this.position.clone().add(new THREE.Vector3(0, 0.15, 0)));
   }
 
   public onDeflectedByOpponent(): void {

@@ -532,7 +532,10 @@ export class Game {
     for (const enemy of this.enemies) {
       if (!enemy.isDead && enemy.currentAttackType === 'thrust' && enemy.aiState === 'ATTACK') {
         const d = this.player.position.distanceTo(enemy.position);
-        if (d <= COMBAT_CONFIG.THRUST_COUNTER_MAX_RANGE) {
+        if (d <= COMBAT_CONFIG.THRUST_COUNTER_MAX_RANGE + 0.8) {
+          // Trigger the specific, cinematic Mikiri Counter Stomp!
+          this.player.performMikiriCounter(enemy, this.particles, this.cameraManager);
+          (enemy as any).onMikiriVictim();
           this.combatEngine.triggerThrustCounter(enemy, this.player, enemy.rig.getWeaponTipWorld());
           break;
         }
