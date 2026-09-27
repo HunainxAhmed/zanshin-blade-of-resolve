@@ -10,7 +10,7 @@ export class SwordTrail {
   private maxPoints: number;
   private active: boolean = false;
 
-  constructor(scene: THREE.Scene, maxPoints: number = 14, color: number = 0xffffff) {
+  constructor(scene: THREE.Scene, maxPoints: number = 24, color: number = 0xffffff) {
     this.maxPoints = maxPoints;
 
     this.geometry = new THREE.BufferGeometry();
@@ -19,7 +19,6 @@ export class SwordTrail {
     const uvs = new Float32Array(vertexCount * 2);
     const indices: number[] = [];
 
-    // Create quad strip indices
     for (let i = 0; i < maxPoints - 1; i++) {
       const p1 = i * 2;
       const p2 = i * 2 + 1;
@@ -38,7 +37,7 @@ export class SwordTrail {
       color: color,
       side: THREE.DoubleSide,
       transparent: true,
-      opacity: 0.65,
+      opacity: 0.85,
       blending: THREE.AdditiveBlending,
       depthWrite: false,
     });
@@ -48,7 +47,7 @@ export class SwordTrail {
     scene.add(this.mesh);
   }
 
-  public setColor(color: number, opacity: number = 0.65): void {
+  public setColor(color: number, opacity: number = 0.85): void {
     this.material.color.setHex(color);
     this.material.opacity = opacity;
   }
@@ -72,7 +71,6 @@ export class SwordTrail {
       return;
     }
 
-    // Add new points
     this.pointsTip.unshift(tipWorldPos.clone());
     this.pointsBase.unshift(baseWorldPos.clone());
 
@@ -109,15 +107,15 @@ export class SwordTrail {
         uvs[(idx + 1) * 2 + 0] = u;
         uvs[(idx + 1) * 2 + 1] = 1;
       } else {
-        // Collapse unused
         const lastIdx = Math.max(0, len - 1);
         const lastTip = this.pointsTip[lastIdx] || new THREE.Vector3();
+        const lastBase = this.pointsBase[lastIdx] || new THREE.Vector3();
         pos[idx * 3 + 0] = lastTip.x;
         pos[idx * 3 + 1] = lastTip.y;
         pos[idx * 3 + 2] = lastTip.z;
-        pos[(idx + 1) * 3 + 0] = lastTip.x;
-        pos[(idx + 1) * 3 + 1] = lastTip.y;
-        pos[(idx + 1) * 3 + 2] = lastTip.z;
+        pos[(idx + 1) * 3 + 0] = lastBase.x;
+        pos[(idx + 1) * 3 + 1] = lastBase.y;
+        pos[(idx + 1) * 3 + 2] = lastBase.z;
       }
     }
 

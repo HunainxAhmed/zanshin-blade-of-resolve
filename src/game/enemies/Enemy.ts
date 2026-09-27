@@ -74,7 +74,7 @@ export class Enemy implements Combatant {
   public velocity: THREE.Vector3 = new THREE.Vector3();
   public facingAngle: number = 0;
   private circleDirection: number = 1;
-  private dodgeDir: THREE.Vector3 = new THREE.Vector3();
+  private consecutiveBlockedAttacks: number = 0;
 
   // Attack frame window
   public isAttackActiveWindow: boolean = false;
@@ -92,15 +92,15 @@ export class Enemy implements Combatant {
     scene.add(this.rig.root);
 
     this.animator = new ProceduralAnimator(this.rig);
-    this.swordTrail = new SwordTrail(scene, 14, config.trailColor);
+    this.swordTrail = new SwordTrail(scene, 16, config.trailColor);
 
     this.hurtbox = {
       center: new THREE.Vector3(),
-      radius: config.archetype === 'heavy' ? 0.65 : 0.45,
+      radius: config.archetype === 'heavy' ? 0.8 : 0.6,
       height: config.archetype === 'heavy' ? 2.1 : 1.8,
     };
 
-    this.attackCooldownTimer = 1.0 + Math.random() * 0.8;
+    this.attackCooldownTimer = 1.0 + Math.random() * 0.5;
   }
 
   public get position(): THREE.Vector3 {
@@ -133,7 +133,6 @@ export class Enemy implements Combatant {
       this.dodgeIFrameTimer -= delta;
     }
 
-    // AI Decision Tree
     switch (this.aiState) {
       case 'IDLE':
       case 'APPROACH':
@@ -200,7 +199,7 @@ export class Enemy implements Combatant {
     this.facingAngle = Math.atan2(dir.x, dir.z);
     this.rig.root.rotation.y = this.facingAngle;
 
-    // Check if ready to initiate an attack
+    // Ready to attack if cooldown ready and within striking distance
     if (this.attackCooldownTimer <= 0 && dist <= this.config.attackRange + 0.8) {
       this.startAttackSequence();
       return;
@@ -208,39 +207,33 @@ export class Enemy implements Combatant {
 
     // Tactical Positioning
     if (dist > this.config.attackRange + 1.2) {
-      // Approach player
+      // Fast approach
       this.velocity.copy(dir).multiplyScalar(this.config.runSpeed);
       this.position.addScaledVector(this.velocity, delta);
       this.animator.setState('run');
       this.aiState = 'APPROACH';
-    } else if (dist < 1.4) {
-      // Too close: back off slightly
-      this.velocity.copy(dir).negate().multiplyScalar(this.config.walkSpeed * 0.8);
+    } else if (dist < 1.2) {
+      // Space back
+      this.velocity.copy(dir).negate().multiplyScalar(this.config.walkSpeed * 0.9);
       this.position.addScaledVector(this.velocity, delta);
       this.animator.setState('walk');
       this.aiState = 'RETREAT';
     } else {
-      // Medium range: Circle strafe & threaten
+      // Circle strafe
       const tangent = new THREE.Vector3(-dir.z, 0, dir.x).multiplyScalar(this.circleDirection);
       this.velocity.copy(tangent).multiplyScalar(this.config.walkSpeed);
       this.position.addScaledVector(this.velocity, delta);
 
-      // Randomly reverse strafe direction
-      if (Math.random() < 0.01) {
+      if (Math.random() < 0.015) {
         this.circleDirection *= -1;
       }
 
       this.animator.setState('walk');
       this.aiState = 'CIRCLE';
-
-      // Chance to enter defensive guard if player attacks frequently
-      if (Math.random() < this.config.parryChance * 0.02) {
-        this.transitionTo('DEFEND');
-      }
     }
   }
 
-  private startAttackSequence(): void {
+  public startAttackSequence(): void {
     this.comboStep = 1;
     this.chooseAttackType();
     this.transitionTo('ATTACK');
@@ -251,10 +244,12 @@ export class Enemy implements Combatant {
     if (this.config.canThrust && rand < 0.28) {
       this.currentAttackType = 'thrust';
       EventBus.emit('perilous_warning', { attackType: 'thrust', attacker: this });
+      AudioEngine.playDangerWarning();
     } else if (this.config.canSweep && rand < 0.48) {
       this.currentAttackType = 'sweep';
       EventBus.emit('perilous_warning', { attackType: 'sweep', attacker: this });
-    } else if (rand < 0.75) {
+      AudioEngine.playDangerWarning();
+    } else if (rand < 0.78) {
       this.currentAttackType = 'normal';
     } else {
       this.currentAttackType = 'heavy';
@@ -262,43 +257,42 @@ export class Enemy implements Combatant {
   }
 
   private updateAttackState(delta: number, player: Combatant, combatEngine: CombatEngine): void {
-    let duration = 0.55;
-    let activeStart = 0.18;
-    let activeEnd = 0.38;
-    let damage = 20;
-    let postureDmg = 18;
+    let duration = 0.48;
+    let activeStart = 0.12;
+    let activeEnd = 0.32;
+    let damage = 22;
+    let postureDmg = 20;
 
     if (this.currentAttackType === 'thrust') {
-      duration = 0.65;
-      activeStart = 0.32; // Long telegraph for Mikiri counter!
-      activeEnd = 0.48;
-      damage = 32;
-      postureDmg = 30;
+      duration = 0.58;
+      activeStart = 0.28;
+      activeEnd = 0.45;
+      damage = 34;
+      postureDmg = 32;
       this.animator.setState('thrust');
     } else if (this.currentAttackType === 'sweep') {
-      duration = 0.72;
-      activeStart = 0.35;
-      activeEnd = 0.58;
-      damage = 35;
-      postureDmg = 35;
+      duration = 0.65;
+      activeStart = 0.30;
+      activeEnd = 0.52;
+      damage = 36;
+      postureDmg = 36;
       this.animator.setState('sweep');
     } else if (this.currentAttackType === 'heavy') {
-      duration = 0.68;
-      activeStart = 0.28;
-      activeEnd = 0.46;
-      damage = 30;
-      postureDmg = 28;
+      duration = 0.60;
+      activeStart = 0.24;
+      activeEnd = 0.42;
+      damage = 32;
+      postureDmg = 30;
       this.animator.setState('heavy_strike');
     } else {
-      // Normal combo slash
       const anim: AnimState = this.comboStep === 1 ? 'attack1' : 'attack2';
       this.animator.setState(anim);
     }
 
-    // Step forward during startup
+    // Step forward into the attack
     if (this.stateTimer < activeStart) {
       const fwd = new THREE.Vector3(Math.sin(this.facingAngle), 0, Math.cos(this.facingAngle));
-      this.position.addScaledVector(fwd, 2.0 * delta);
+      this.position.addScaledVector(fwd, 3.5 * delta);
     }
 
     // Active Strike Window
@@ -307,7 +301,7 @@ export class Enemy implements Combatant {
         this.isAttackActiveWindow = true;
         this.hasHitCurrentSwing = false;
         this.swordTrail.setActive(true);
-        AudioEngine.playSwordSwing(1.0);
+        AudioEngine.playSwordSwing(1.1);
       }
 
       if (!this.hasHitCurrentSwing) {
@@ -322,13 +316,12 @@ export class Enemy implements Combatant {
 
     // End of swing: check combo continuation or cooldown
     if (this.stateTimer >= duration) {
-      if (this.comboStep < this.maxComboSteps && this.currentAttackType === 'normal' && Math.random() < 0.65) {
+      if (this.comboStep < this.maxComboSteps && this.currentAttackType === 'normal' && Math.random() < 0.7) {
         this.comboStep++;
         this.stateTimer = 0;
         this.hasHitCurrentSwing = false;
         this.chooseAttackType();
       } else {
-        // Finish combo
         this.attackCooldownTimer = this.config.attackCooldown * (0.8 + Math.random() * 0.4);
         this.transitionTo('IDLE');
       }
@@ -348,7 +341,17 @@ export class Enemy implements Combatant {
     const hurtbox = (player as any).hurtbox;
     if (!hurtbox) return;
 
-    const hit = this.weaponTrace.checkSegmentIntersection(tip, base, hurtbox, contact);
+    const hit = this.weaponTrace.checkMeleeHit(
+      this.position,
+      this.facingAngle,
+      tip,
+      base,
+      hurtbox,
+      3.0,
+      80,
+      contact
+    );
+
     if (hit) {
       this.hasHitCurrentSwing = true;
       combatEngine.resolveStrike(this, player, this.currentAttackType, damage, postureDmg, contact);
@@ -359,19 +362,17 @@ export class Enemy implements Combatant {
     this.isGuarding = true;
     this.animator.setState('guard');
 
-    // Face player
     const toPlayer = player.position.clone().sub(this.position).setY(0).normalize();
     this.facingAngle = Math.atan2(toPlayer.x, toPlayer.z);
     this.rig.root.rotation.y = this.facingAngle;
 
-    if (this.stateTimer >= 0.8) {
+    if (this.stateTimer >= 0.7) {
       this.isGuarding = false;
       this.transitionTo('IDLE');
     }
   }
 
   private updateDodgeState(delta: number): void {
-    this.position.addScaledVector(this.dodgeDir, 8.0 * delta);
     if (this.stateTimer >= 0.35) {
       this.isDodging = false;
       this.transitionTo('IDLE');
@@ -399,7 +400,6 @@ export class Enemy implements Combatant {
     this.animator.setState(anim);
   }
 
-  // Combatant callbacks
   public onTakeDamage(amount: number, postureAmount: number, isCleanHit: boolean): void {
     if (isCleanHit) {
       this.transitionTo('STAGGER');
@@ -411,7 +411,10 @@ export class Enemy implements Combatant {
   }
 
   public onDeflectedByOpponent(): void {
-    this.transitionTo('STAGGER');
+    // When enemy attack is deflected by player, enemy recoils!
+    this.animator.setState('deflect_react');
+    this.stateTimer = 0;
+    this.attackCooldownTimer = 0.8;
   }
 
   public onPostureBreak(): void {

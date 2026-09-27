@@ -7,66 +7,53 @@ export interface Hurtbox {
 }
 
 export class WeaponTrace {
-  private lastTip: THREE.Vector3 = new THREE.Vector3();
-  private lastBase: THREE.Vector3 = new THREE.Vector3();
-  private hasPrevious: boolean = false;
-
-  public reset(): void {
-    this.hasPrevious = false;
-  }
-
-  public checkSegmentIntersection(
-    currentTip: THREE.Vector3,
-    currentBase: THREE.Vector3,
-    hurtbox: Hurtbox,
+  /**
+   * High-reliability melee hit check.
+   * Combines forward cone/sector evaluation with blade distance.
+   */
+  public checkMeleeHit(
+    attackerPos: THREE.Vector3,
+    attackerFacingAngle: number,
+    weaponTipWorld: THREE.Vector3,
+    weaponBaseWorld: THREE.Vector3,
+    targetHurtbox: Hurtbox,
+    maxRange: number = 2.8,
+    coneAngleDeg: number = 75,
     outContactPoint?: THREE.Vector3
   ): boolean {
-    if (!this.hasPrevious) {
-      this.lastTip.copy(currentTip);
-      this.lastBase.copy(currentBase);
-      this.hasPrevious = true;
+    const toTarget = targetHurtbox.center.clone().sub(attackerPos);
+    toTarget.y = 0;
+    const dist = toTarget.length();
+
+    // 1. Out of range check (with generous buffer)
+    if (dist > maxRange + targetHurtbox.radius) {
       return false;
     }
 
-    // Check cylinder/capsule hurtbox collision with current weapon line segment
-    const hit = this.intersectSegmentWithCylinder(currentBase, currentTip, hurtbox, outContactPoint);
+    // 2. Forward cone angle check
+    const attackerFwd = new THREE.Vector3(Math.sin(attackerFacingAngle), 0, Math.cos(attackerFacingAngle));
+    const toTargetNorm = toTarget.clone().normalize();
+    const dot = attackerFwd.dot(toTargetNorm);
+    const cosLimit = Math.cos((coneAngleDeg * Math.PI) / 180);
 
-    this.lastTip.copy(currentTip);
-    this.lastBase.copy(currentBase);
-    return hit;
-  }
-
-  private intersectSegmentWithCylinder(
-    p1: THREE.Vector3,
-    p2: THREE.Vector3,
-    cylinder: Hurtbox,
-    outContactPoint?: THREE.Vector3
-  ): boolean {
-    const bottom = cylinder.center.clone();
-    bottom.y -= cylinder.height / 2;
-    const top = cylinder.center.clone();
-    top.y += cylinder.height / 2;
-
-    // Sample along weapon blade from base to tip (4 points)
-    const samples = 4;
-    for (let i = 0; i <= samples; i++) {
-      const alpha = i / samples;
-      const testPoint = new THREE.Vector3().lerpVectors(p1, p2, alpha);
-
-      // Check vertical bounds
-      if (testPoint.y >= bottom.y && testPoint.y <= top.y) {
-        // Check horizontal radial distance
-        const dx = testPoint.x - cylinder.center.x;
-        const dz = testPoint.z - cylinder.center.z;
-        const distSq = dx * dx + dz * dz;
-
-        if (distSq <= cylinder.radius * cylinder.radius) {
-          if (outContactPoint) {
-            outContactPoint.copy(testPoint);
-          }
-          return true;
-        }
+    // If target is within forward cone and in distance
+    if (dot >= cosLimit && dist <= maxRange + targetHurtbox.radius) {
+      if (outContactPoint) {
+        // Place contact point at intersection near weapon tip/midpoint
+        const midBlade = new THREE.Vector3().lerpVectors(weaponBaseWorld, weaponTipWorld, 0.7);
+        outContactPoint.copy(midBlade).lerp(targetHurtbox.center, 0.4);
+        outContactPoint.y = Math.max(0.8, Math.min(1.5, outContactPoint.y));
       }
+      return true;
+    }
+
+    // 3. Proximity fallback: if blade tip or base is directly within target hurtbox radius
+    const tipDist = weaponTipWorld.distanceTo(targetHurtbox.center);
+    if (tipDist <= targetHurtbox.radius + 0.6) {
+      if (outContactPoint) {
+        outContactPoint.copy(weaponTipWorld);
+      }
+      return true;
     }
 
     return false;

@@ -288,7 +288,8 @@ export class CharacterRig {
       gripMesh.position.set(0, 0, 0.02);
       this.joints.weapon.add(gripMesh);
 
-      this.joints.weaponTip.position.set(0, 0, -bladeLen - 0.12);
+      this.joints.weaponBase.position.set(0, 0, -0.12);
+      this.joints.weaponTip.position.set(0, 0, -bladeLen - 0.16);
     }
   }
 

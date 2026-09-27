@@ -59,61 +59,73 @@ export class CombatEngine {
 
     // 1. Check Dodge i-frames
     if (defender.isDodging && defender.dodgeIFrameTimer > 0) {
-      // Clean evasion
       EventBus.emit('dodge', { defender, attacker });
       return;
     }
 
-    // 2. Check Thrust Counter (Mikiri)
-    if (attackType === 'thrust' && defender.isPlayer && !defender.isPostureBroken) {
-      // Check if player executed counter
-      // Handled directly via action key E when in range
+    // 2. Unblockables: Sweeps and Grabs bypass guard completely
+    if (attackType === 'sweep' || attackType === 'grab') {
+      this.applyCleanHit(attacker, defender, damage * 1.25, postureDamage * 1.5, contactPoint, attackType);
+      return;
     }
 
-    // 3. Check Deflection / Guard
-    if (defender.isGuarding && !defender.isPostureBroken) {
-      // Sweeps & Grabs cannot be blocked or deflected
-      if (attackType === 'sweep' || attackType === 'grab') {
-        this.applyCleanHit(attacker, defender, damage * 1.25, postureDamage * 1.5, contactPoint, attackType);
-        return;
-      }
+    // 3. Defender Defense: Check if Defender is Guarding or Enemy Defense AI is active
+    let defenderIsGuarding = defender.isGuarding;
 
+    // If defender is an Enemy and player is attacking them, enemy actively guards/deflects if alert!
+    if (!defender.isPlayer && attacker.isPlayer && !defender.isPostureBroken) {
+      const enemy = defender as any;
+      // If enemy is not in active attack strike window or hit stagger, they can clash/defend
+      const canGuard = !enemy.isAttackActiveWindow && enemy.aiState !== 'STAGGER' && enemy.aiState !== 'POSTURE_BREAK';
+      if (canGuard) {
+        const parryChance = enemy.config?.parryChance ?? 0.6;
+        if (Math.random() < parryChance) {
+          defenderIsGuarding = true;
+          // Decide if enemy does a perfect deflect clash (25% chance of their guard)
+          if (Math.random() < 0.25) {
+            defender.guardWindowTimer = 0.05; // Treat as perfect deflect window
+          } else {
+            defender.guardWindowTimer = 0.35; // Normal block
+          }
+        }
+      }
+    }
+
+    if (defenderIsGuarding && !defender.isPostureBroken) {
       // Check Perfect Deflect Window
       if (defender.guardWindowTimer <= timings.perfectDeflectWindow) {
         this.applyPerfectDeflect(attacker, defender, contactPoint);
         return;
       }
 
-      // Check Normal Block Window
-      if (defender.guardWindowTimer <= timings.normalBlockWindow || defender.isGuarding) {
-        this.applyNormalBlock(attacker, defender, damage, postureDamage, contactPoint);
-        return;
-      }
+      // Normal Guard Clash
+      this.applyNormalBlock(attacker, defender, damage, postureDamage, contactPoint);
+      return;
     }
 
-    // 4. Clean Hit connects
+    // 4. Clean Hit connects directly into flesh
     this.applyCleanHit(attacker, defender, damage, postureDamage, contactPoint, attackType);
   }
 
-  private applyPerfectDeflect(attacker: Combatant, defender: Combatant, hitPoint: THREE.Vector3): void {
-    // 1. Audio
+  public applyPerfectDeflect(attacker: Combatant, defender: Combatant, hitPoint: THREE.Vector3): void {
+    // 1. Audio: Signature Sekiro high crystal ping + heavy metallic clash
     AudioEngine.playPerfectDeflect();
 
-    // 2. VFX
+    // 2. VFX: Massive radiant spark explosion and shockwave
     this.particles.spawnDeflectBurst(hitPoint, true);
 
     // 3. Screen Freeze Hit-stop
     Time.triggerHitStop(COMBAT_CONFIG.HIT_STOP_PERFECT_DEFLECT);
 
     // 4. Camera Shake & Zoom
-    this.camera.addTrauma(COMBAT_CONFIG.SHAKE_MEDIUM);
-    this.camera.pulseZoom(4.0, 180);
+    this.camera.addTrauma(COMBAT_CONFIG.SHAKE_HEAVY);
+    this.camera.pulseZoom(3.8, 200);
 
     // 5. Posture Damage to ATTACKER
     const postureDealt = COMBAT_CONFIG.PERFECT_DEFLECT_POSTURE_DAMAGE;
     attacker.posture = Math.min(attacker.maxPosture, attacker.posture + postureDealt);
 
-    // 6. Recoil animations
+    // 6. Recoil animations on both fighters
     attacker.onDeflectedByOpponent();
     defender.onDeflectSuccess();
 
@@ -130,14 +142,14 @@ export class CombatEngine {
     });
   }
 
-  private applyNormalBlock(
+  public applyNormalBlock(
     attacker: Combatant,
     defender: Combatant,
     damage: number,
     postureDamage: number,
     hitPoint: THREE.Vector3
   ): void {
-    // 1. Audio
+    // 1. Audio: Heavy steel clash
     AudioEngine.playNormalBlock();
 
     // 2. Sparks
@@ -150,12 +162,12 @@ export class CombatEngine {
     this.camera.addTrauma(COMBAT_CONFIG.SHAKE_LIGHT);
 
     // 5. Posture damage to DEFENDER
-    const postureCost = COMBAT_CONFIG.NORMAL_BLOCK_POSTURE_TAKEN;
+    const postureCost = Math.floor(postureDamage * 0.7);
     defender.posture = Math.min(defender.maxPosture, defender.posture + postureCost);
 
-    // Defender takes 0 damage (or minimal chip for heavy)
-    const chipDamage = attacker.isPlayer ? 0 : Math.floor(damage * 0.08);
-    defender.onTakeDamage(chipDamage, postureCost, false);
+    // Attacker takes minimal recoil
+    attacker.onDeflectedByOpponent();
+    defender.onTakeDamage(0, postureCost, false);
 
     // Check defender posture break
     if (defender.posture >= defender.maxPosture && !defender.isPostureBroken) {
@@ -175,10 +187,10 @@ export class CombatEngine {
   ): void {
     const isHeavy = attackType === 'heavy' || attackType === 'special';
 
-    // 1. Audio
+    // 1. Audio: Visceral blade slice + bass thud
     AudioEngine.playHitFlesh(isHeavy);
 
-    // 2. Blood / impact sparks
+    // 2. Blood & Impact sparks
     this.particles.spawnBloodImpact(hitPoint, undefined, isHeavy);
 
     // 3. Hit-stop
@@ -215,8 +227,7 @@ export class CombatEngine {
     Time.triggerHitStop(COMBAT_CONFIG.HIT_STOP_HEAVY);
     this.camera.addTrauma(COMBAT_CONFIG.SHAKE_HEAVY);
 
-    // Massive posture damage to thrust attacker
-    const postureDamage = 45;
+    const postureDamage = 50;
     attacker.posture = Math.min(attacker.maxPosture, attacker.posture + postureDamage);
     if (attacker.onCounterSuccess) {
       attacker.onCounterSuccess();
@@ -242,10 +253,6 @@ export class CombatEngine {
     EventBus.emit('posture_break', { defender: target });
   }
 
-  /**
-   * Posture Recovery Calculation:
-   * Dependent on health percentage (High HP = rapid recovery, Low HP = sluggish recovery)
-   */
   public updatePostureRecovery(target: Combatant, delta: number, inCombatAction: boolean): void {
     if (target.isDead || target.isPostureBroken || inCombatAction || target.posture <= 0) return;
 
@@ -258,7 +265,6 @@ export class CombatEngine {
       rate = COMBAT_CONFIG.POSTURE_RECOVERY_MID_HP;
     }
 
-    // While holding guard, posture recovers 50% faster if not hit (authentic Sekiro recovery stance)
     if (target.isGuarding) {
       rate *= 1.5;
     }

@@ -73,8 +73,6 @@ export class Player implements Combatant {
   // Attack Tracking
   public isAttackActiveWindow: boolean = false;
   public hasHitCurrentSwing: boolean = false;
-
-  // Execution target reference
   public executionTarget: Combatant | null = null;
 
   constructor(scene: THREE.Scene) {
@@ -82,11 +80,11 @@ export class Player implements Combatant {
     scene.add(this.rig.root);
 
     this.animator = new ProceduralAnimator(this.rig);
-    this.swordTrail = new SwordTrail(scene, 16, 0x4dabf7);
+    this.swordTrail = new SwordTrail(scene, 18, 0x64b5f6);
 
     this.hurtbox = {
       center: new THREE.Vector3(),
-      radius: 0.45,
+      radius: 0.6,
       height: 1.8,
     };
   }
@@ -126,7 +124,6 @@ export class Player implements Combatant {
       this.dodgeIFrameTimer -= delta;
     }
 
-    // Check buffered inputs
     const buffered = input.consumeBufferedAction();
 
     // Handle State Machine
@@ -146,15 +143,27 @@ export class Player implements Combatant {
         break;
 
       case 'ATTACK_1':
-        this.handleAttackCombo(delta, input, 'ATTACK_2', 0.42, 0.12, 0.28, COMBAT_CONFIG.ATTACK_1_DAMAGE, COMBAT_CONFIG.ATTACK_1_POSTURE, enemies, combatEngine, buffered);
+        this.handleAttackCombo(
+          delta, input, 'ATTACK_2', 0.38, 0.08, 0.28,
+          COMBAT_CONFIG.ATTACK_1_DAMAGE, COMBAT_CONFIG.ATTACK_1_POSTURE,
+          enemies, combatEngine, buffered, camera
+        );
         break;
 
       case 'ATTACK_2':
-        this.handleAttackCombo(delta, input, 'ATTACK_3', 0.44, 0.12, 0.30, COMBAT_CONFIG.ATTACK_2_DAMAGE, COMBAT_CONFIG.ATTACK_2_POSTURE, enemies, combatEngine, buffered);
+        this.handleAttackCombo(
+          delta, input, 'ATTACK_3', 0.40, 0.08, 0.28,
+          COMBAT_CONFIG.ATTACK_2_DAMAGE, COMBAT_CONFIG.ATTACK_2_POSTURE,
+          enemies, combatEngine, buffered, camera
+        );
         break;
 
       case 'ATTACK_3':
-        this.handleAttackCombo(delta, input, null, 0.55, 0.18, 0.38, COMBAT_CONFIG.ATTACK_3_DAMAGE, COMBAT_CONFIG.ATTACK_3_POSTURE, enemies, combatEngine, buffered);
+        this.handleAttackCombo(
+          delta, input, null, 0.50, 0.14, 0.36,
+          COMBAT_CONFIG.ATTACK_3_DAMAGE, COMBAT_CONFIG.ATTACK_3_POSTURE,
+          enemies, combatEngine, buffered, camera
+        );
         break;
 
       case 'HEAVY_CHARGE':
@@ -172,7 +181,7 @@ export class Player implements Combatant {
         break;
 
       case 'STAGGER':
-        if (this.stateTimer >= 0.4) {
+        if (this.stateTimer >= 0.38) {
           this.transitionTo('IDLE');
         }
         break;
@@ -226,12 +235,7 @@ export class Player implements Combatant {
     particles: ParticleSystem,
     bufferedAction: string | null
   ): void {
-    // 1. Check Execution Opportunity [E]
-    if (input.state.actionPressed) {
-      if (this.tryTriggerExecution()) return;
-    }
-
-    // 2. Check Guard / Deflect [Right Mouse]
+    // 1. Guard / Deflect [Right Mouse]
     if (input.state.guardHeld || bufferedAction === 'guard') {
       this.isGuarding = true;
       this.guardWindowTimer = 0;
@@ -239,9 +243,8 @@ export class Player implements Combatant {
       return;
     }
 
-    // 3. Check Attack [Left Mouse]
+    // 2. Attack [Left Mouse]
     if (input.state.attackPressed || bufferedAction === 'attack') {
-      // Check if user is starting a charge
       if (input.state.attackHeld && input.state.attackHoldDuration > 0.25) {
         this.transitionTo('HEAVY_CHARGE');
         return;
@@ -250,14 +253,14 @@ export class Player implements Combatant {
       return;
     }
 
-    // 4. Check Special Attack [R]
+    // 3. Special Attack [R]
     if ((input.state.specialPressed || bufferedAction === 'special') && this.specialPips >= 1) {
       this.specialPips--;
       this.transitionTo('SPECIAL');
       return;
     }
 
-    // 5. Check Heal Flask [1]
+    // 4. Heal Flask [1]
     if (input.state.healPressed && this.healCharges > 0 && this.health < this.maxHealth) {
       this.healCharges--;
       this.health = Math.min(this.maxHealth, this.health + COMBAT_CONFIG.PLAYER_HEAL_AMOUNT);
@@ -266,20 +269,18 @@ export class Player implements Combatant {
       return;
     }
 
-    // 6. Check Dodge [Space]
+    // 5. Dodge [Space]
     if (input.state.dodgePressed || bufferedAction === 'dodge') {
       this.startDodge(camera, input, particles);
       return;
     }
 
-    // 7. Locomotion Movement (WASD relative to camera look)
+    // 6. WASD Movement
     const moveZ = (input.state.forward ? 1 : 0) - (input.state.backward ? 1 : 0);
     const moveX = (input.state.right ? 1 : 0) - (input.state.left ? 1 : 0);
-
     const isMoving = moveX !== 0 || moveZ !== 0;
 
     if (isMoving) {
-      // Camera forward & right vectors
       const camYaw = camera.yaw;
       const fwd = new THREE.Vector3(-Math.sin(camYaw), 0, -Math.cos(camYaw));
       const right = new THREE.Vector3(Math.cos(camYaw), 0, -Math.sin(camYaw));
@@ -290,7 +291,7 @@ export class Player implements Combatant {
       this.velocity.copy(this.moveDirection).multiplyScalar(speed);
       this.position.addScaledVector(this.velocity, delta);
 
-      // Rotate player towards movement direction or lock-on target
+      // Facing
       if (camera.getLockTarget()) {
         const targetPos = camera.getLockTarget()!.position;
         const dir = targetPos.clone().sub(this.position).setY(0).normalize();
@@ -307,7 +308,6 @@ export class Player implements Combatant {
     } else {
       this.velocity.set(0, 0, 0);
 
-      // If locked on, face target even while idle
       if (camera.getLockTarget()) {
         const targetPos = camera.getLockTarget()!.position;
         const dir = targetPos.clone().sub(this.position).setY(0).normalize();
@@ -331,12 +331,11 @@ export class Player implements Combatant {
     if (moveX !== 0 || moveZ !== 0) {
       this.dodgeDirection.copy(fwd.multiplyScalar(moveZ).add(right.multiplyScalar(moveX))).normalize();
     } else {
-      // Neutral backward dodge
       this.dodgeDirection.copy(fwd.negate()).normalize();
     }
 
     this.isDodging = true;
-    this.dodgeIFrameTimer = 0.25; // 250ms i-frames
+    this.dodgeIFrameTimer = 0.25;
     AudioEngine.playDodge();
     particles.spawnDodgeDust(this.position, this.dodgeDirection);
 
@@ -347,26 +346,24 @@ export class Player implements Combatant {
   }
 
   private handleDodgeState(delta: number): void {
-    const progress = Math.min(1.0, this.stateTimer / 0.4);
+    const progress = Math.min(1.0, this.stateTimer / 0.38);
     const speed = COMBAT_CONFIG.DODGE_SPEED * (1.0 - progress * 0.7);
 
     this.position.addScaledVector(this.dodgeDirection, speed * delta);
 
-    if (this.stateTimer >= 0.4) {
+    if (this.stateTimer >= 0.38) {
       this.isDodging = false;
       this.transitionTo('IDLE');
     }
   }
 
   private handleGuardState(delta: number, input: InputManager, camera: CombatCamera, bufferedAction: string | null): void {
-    // Face lock target if present
     if (camera.getLockTarget()) {
       const dir = camera.getLockTarget()!.position.clone().sub(this.position).setY(0).normalize();
       this.facingAngle = Math.atan2(dir.x, dir.z);
       this.rig.root.rotation.y = this.facingAngle;
     }
 
-    // Cancel guard into attack or dodge
     if (input.state.attackPressed || bufferedAction === 'attack') {
       this.isGuarding = false;
       this.transitionTo('ATTACK_1');
@@ -395,24 +392,31 @@ export class Player implements Combatant {
     postureDmg: number,
     enemies: Combatant[],
     combatEngine: CombatEngine,
-    bufferedAction: string | null
+    bufferedAction: string | null,
+    camera: CombatCamera
   ): void {
-    // Minor forward step during attack
+    // 1. Magnetic Lunge: Step smoothly forward during attack startup
     if (this.stateTimer < activeStart) {
+      // If locked-on, orient towards target
+      if (camera.getLockTarget()) {
+        const toTarget = camera.getLockTarget()!.position.clone().sub(this.position).setY(0).normalize();
+        this.facingAngle = Math.atan2(toTarget.x, toTarget.z);
+        this.rig.root.rotation.y = this.facingAngle;
+      }
+
       const stepDir = new THREE.Vector3(Math.sin(this.facingAngle), 0, Math.cos(this.facingAngle));
-      this.position.addScaledVector(stepDir, 1.8 * delta);
+      this.position.addScaledVector(stepDir, 4.0 * delta); // Strong forward step into strike
     }
 
-    // Active Window
+    // 2. Active Strike Window
     if (this.stateTimer >= activeStart && this.stateTimer <= activeEnd) {
       if (!this.isAttackActiveWindow) {
         this.isAttackActiveWindow = true;
         this.hasHitCurrentSwing = false;
         this.swordTrail.setActive(true);
-        AudioEngine.playSwordSwing(1.1);
+        AudioEngine.playSwordSwing(1.2);
       }
 
-      // Check hit collision
       if (!this.hasHitCurrentSwing) {
         this.checkWeaponHits(damage, postureDmg, 'normal', enemies, combatEngine);
       }
@@ -423,15 +427,15 @@ export class Player implements Combatant {
       }
     }
 
-    // Combo chaining window (near end of swing)
-    if (this.stateTimer > activeEnd * 0.9 && nextComboState) {
+    // 3. Fluid Combo Chaining
+    if (this.stateTimer > activeEnd * 0.85 && nextComboState) {
       if (input.state.attackPressed || bufferedAction === 'attack') {
         this.transitionTo(nextComboState);
         return;
       }
     }
 
-    // Allow cancel into dodge
+    // Cancel into dodge during recovery
     if (this.stateTimer > activeEnd && (input.state.dodgePressed || bufferedAction === 'dodge')) {
       this.transitionTo('IDLE');
       return;
@@ -443,20 +447,26 @@ export class Player implements Combatant {
   }
 
   private handleHeavyCharge(delta: number, input: InputManager, camera: CombatCamera): void {
+    if (camera.getLockTarget()) {
+      const toTarget = camera.getLockTarget()!.position.clone().sub(this.position).setY(0).normalize();
+      this.facingAngle = Math.atan2(toTarget.x, toTarget.z);
+      this.rig.root.rotation.y = this.facingAngle;
+    }
+
     if (!input.state.attackHeld) {
-      // Release charged heavy strike!
       this.transitionTo('HEAVY_STRIKE');
     }
   }
 
   private handleHeavyStrike(delta: number, enemies: Combatant[], combatEngine: CombatEngine): void {
-    const activeStart = 0.16;
-    const activeEnd = 0.38;
-    const duration = 0.52;
+    const activeStart = 0.12;
+    const activeEnd = 0.32;
+    const duration = 0.45;
 
+    // Massive supersonic forward surge
     if (this.stateTimer < activeStart) {
       const stepDir = new THREE.Vector3(Math.sin(this.facingAngle), 0, Math.cos(this.facingAngle));
-      this.position.addScaledVector(stepDir, 4.5 * delta);
+      this.position.addScaledVector(stepDir, 8.5 * delta);
     }
 
     if (this.stateTimer >= activeStart && this.stateTimer <= activeEnd) {
@@ -464,8 +474,8 @@ export class Player implements Combatant {
         this.isAttackActiveWindow = true;
         this.hasHitCurrentSwing = false;
         this.swordTrail.setActive(true);
-        this.swordTrail.setColor(0xff922b, 0.85);
-        AudioEngine.playSwordSwing(1.3);
+        this.swordTrail.setColor(0xff922b, 0.95);
+        AudioEngine.playSwordSwing(1.4);
       }
 
       if (!this.hasHitCurrentSwing) {
@@ -475,7 +485,7 @@ export class Player implements Combatant {
       if (this.isAttackActiveWindow) {
         this.isAttackActiveWindow = false;
         this.swordTrail.setActive(false);
-        this.swordTrail.setColor(0x4dabf7, 0.65);
+        this.swordTrail.setColor(0x64b5f6, 0.7);
       }
     }
 
@@ -487,23 +497,23 @@ export class Player implements Combatant {
   private handleSpecialAttack(delta: number, enemies: Combatant[], combatEngine: CombatEngine): void {
     const duration = 0.85;
 
-    if (this.stateTimer < 0.1) {
+    if (this.stateTimer < 0.08) {
       this.swordTrail.setActive(true);
       this.swordTrail.setColor(0x00e5ff, 0.95);
       AudioEngine.playSpecialAttack();
     }
 
     // 3 rapid hits during whirlwind
-    const hitTimes = [0.22, 0.44, 0.66];
+    const hitTimes = [0.18, 0.38, 0.58];
     for (const ht of hitTimes) {
       if (Math.abs(this.stateTimer - ht) < delta * 1.5) {
-        this.checkWeaponHits(22, 25, 'special', enemies, combatEngine);
+        this.checkWeaponHits(26, 28, 'special', enemies, combatEngine);
       }
     }
 
     if (this.stateTimer >= duration) {
       this.swordTrail.setActive(false);
-      this.swordTrail.setColor(0x4dabf7, 0.65);
+      this.swordTrail.setColor(0x64b5f6, 0.7);
       this.transitionTo('IDLE');
     }
   }
@@ -516,18 +526,11 @@ export class Player implements Combatant {
     }
   }
 
-  private tryTriggerExecution(): boolean {
-    // Find nearby posture-broken enemy
-    // Handled in coordination with Game loop
-    return false;
-  }
-
   public performExecutionOn(target: Combatant): void {
     this.isExecuting = true;
     this.executionTarget = target;
     target.isExecuting = true;
 
-    // Face each other
     const dir = target.position.clone().sub(this.position).setY(0).normalize();
     this.facingAngle = Math.atan2(dir.x, dir.z);
     this.rig.root.rotation.y = this.facingAngle;
@@ -552,12 +555,20 @@ export class Player implements Combatant {
       const hurtbox = (enemy as any).hurtbox;
       if (!hurtbox) continue;
 
-      const hit = this.weaponTrace.checkSegmentIntersection(tip, base, hurtbox, contact);
+      const hit = this.weaponTrace.checkMeleeHit(
+        this.position,
+        this.facingAngle,
+        tip,
+        base,
+        hurtbox,
+        2.9, // Generous 2.9 unit melee range
+        75,  // 75 degree forward cone
+        contact
+      );
+
       if (hit) {
         this.hasHitCurrentSwing = true;
         combatEngine.resolveStrike(this, enemy, attackType, damage, postureDmg, contact);
-
-        // Increase special meter on clean hit
         this.addSpecialProgress(COMBAT_CONFIG.PLAYER_SPECIAL_PER_HIT);
         break;
       }
@@ -599,7 +610,6 @@ export class Player implements Combatant {
     this.animator.setState(anim);
   }
 
-  // Combatant callbacks
   public onTakeDamage(amount: number, postureAmount: number, isCleanHit: boolean): void {
     if (isCleanHit) {
       this.transitionTo('STAGGER');
