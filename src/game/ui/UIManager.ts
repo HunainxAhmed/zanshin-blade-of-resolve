@@ -38,6 +38,17 @@ export class UIManager {
   private combatFeedbackBanner: HTMLElement;
   private feedbackText: HTMLElement;
   private flashOverlay: HTMLElement;
+  private lowHealthVignette: HTMLElement;
+  private combatNumbersLayer: HTMLElement;
+
+  // Combo / Style System
+  private comboContainer: HTMLElement;
+  private comboCountLabel: HTMLElement;
+  private comboRankLabel: HTMLElement;
+  private comboTitleLabel: HTMLElement;
+  public currentCombo: number = 0;
+  private lastActionTime: number = 0;
+  private currentRank: string = 'D';
 
   // Arena Info
   private arenaTitle: HTMLElement;
@@ -94,6 +105,13 @@ export class UIManager {
     this.combatFeedbackBanner = document.getElementById('combat-feedback-banner')!;
     this.feedbackText = document.getElementById('feedback-text')!;
     this.flashOverlay = document.getElementById('flash-overlay')!;
+    this.lowHealthVignette = document.getElementById('low-health-vignette')!;
+    this.combatNumbersLayer = document.getElementById('combat-numbers-layer')!;
+
+    this.comboContainer = document.getElementById('combo-container')!;
+    this.comboCountLabel = document.getElementById('combo-count')!;
+    this.comboRankLabel = document.getElementById('combo-rank')!;
+    this.comboTitleLabel = document.getElementById('combo-title')!;
 
     this.arenaTitle = document.getElementById('arena-title')!;
     this.arenaObjective = document.getElementById('arena-objective')!;
@@ -103,10 +121,14 @@ export class UIManager {
   }
 
   private bindEvents(): void {
-    EventBus.on('perfect_deflect', () => {
+    EventBus.on('perfect_deflect', (data) => {
       this.stats.perfectDeflections++;
+      this.incrementCombo();
       this.showFeedback('PERFECT DEFLECT');
       this.triggerFlash('deflect');
+      if (data?.hitPoint) {
+        this.spawnFloatingNumber('+45 POSTURE', new THREE.Vector3(data.hitPoint.x, data.hitPoint.y, data.hitPoint.z), 'posture');
+      }
     });
 
     EventBus.on('normal_block', () => {
@@ -117,19 +139,44 @@ export class UIManager {
       this.stats.successfulDodges++;
     });
 
-    EventBus.on('thrust_counter', () => {
+    EventBus.on('thrust_counter', (data) => {
       this.stats.perfectDeflections++;
+      this.incrementCombo();
       this.showFeedback('MIKIRI COUNTER');
       this.triggerFlash('deflect');
+      if (data?.attacker?.position) {
+        this.spawnFloatingNumber('+50 MIKIRI', data.attacker.position.clone().add(new THREE.Vector3(0, 1.5, 0)), 'crit');
+      }
+    });
+
+    EventBus.on('sweep_counter', (data) => {
+      this.incrementCombo();
+      this.showFeedback('HEAD STOMP COUNTER');
+      this.triggerFlash('deflect');
+      if (data?.defender?.position) {
+        this.spawnFloatingNumber('+55 STOMP', data.defender.position.clone().add(new THREE.Vector3(0, 2.0, 0)), 'crit');
+      }
+    });
+
+    EventBus.on('sweep_evaded', () => {
+      this.showFeedback('SWEEP EVADED');
     });
 
     EventBus.on('player_damaged', (data) => {
       if (data.damage) this.stats.damageTaken += data.damage;
+      this.resetCombo();
       this.triggerFlash('hit');
+      if (data?.hitPoint) {
+        this.spawnFloatingNumber(`-${data.damage}`, new THREE.Vector3(data.hitPoint.x, data.hitPoint.y, data.hitPoint.z), 'crit');
+      }
     });
 
     EventBus.on('hit', (data) => {
       if (data.damage) this.stats.damageDealt += data.damage;
+      this.incrementCombo();
+      if (data?.hitPoint) {
+        this.spawnFloatingNumber(`-${data.damage}`, new THREE.Vector3(data.hitPoint.x, data.hitPoint.y, data.hitPoint.z), 'dmg');
+      }
     });
 
     EventBus.on('enemy_killed', () => {
@@ -139,6 +186,66 @@ export class UIManager {
     EventBus.on('perilous_warning', (data) => {
       this.showPerilousWarning(data.attackType || 'thrust');
     });
+  }
+
+  public incrementCombo(): void {
+    this.currentCombo++;
+    this.lastActionTime = performance.now();
+
+    let rank = 'D';
+    let title = 'RESOLVE';
+    if (this.currentCombo >= 20) {
+      rank = 'S';
+      title = 'ONE MIND';
+    } else if (this.currentCombo >= 13) {
+      rank = 'A';
+      title = 'UNTOUCHABLE';
+    } else if (this.currentCombo >= 8) {
+      rank = 'B';
+      title = 'RELENTLESS';
+    } else if (this.currentCombo >= 4) {
+      rank = 'C';
+      title = 'SWIFT';
+    }
+
+    this.currentRank = rank;
+    this.comboCountLabel.textContent = `${this.currentCombo}`;
+    this.comboRankLabel.textContent = rank;
+    this.comboRankLabel.className = `combo-rank rank-${rank.toLowerCase()} pop`;
+    this.comboTitleLabel.textContent = title;
+    this.comboContainer.classList.remove('hidden');
+
+    setTimeout(() => {
+      if (this.comboRankLabel) {
+        this.comboRankLabel.classList.remove('pop');
+      }
+    }, 150);
+  }
+
+  public resetCombo(): void {
+    this.currentCombo = 0;
+    this.comboContainer.classList.add('hidden');
+  }
+
+  public spawnFloatingNumber(text: string, worldPos: THREE.Vector3, type: 'dmg' | 'posture' | 'crit'): void {
+    if (!this.combatNumbersLayer) return;
+
+    const screenPos = worldPos.clone().project(this.camera);
+    if (screenPos.z > 1.0) return; // Behind camera
+
+    const x = (screenPos.x * 0.5 + 0.5) * window.innerWidth + (Math.random() - 0.5) * 36;
+    const y = (-(screenPos.y * 0.5) + 0.5) * window.innerHeight + (Math.random() - 0.5) * 24;
+
+    const el = document.createElement('div');
+    el.className = `floating-number ${type}`;
+    el.textContent = text;
+    el.style.left = `${x}px`;
+    el.style.top = `${y}px`;
+
+    this.combatNumbersLayer.appendChild(el);
+    setTimeout(() => {
+      el.remove();
+    }, 850);
   }
 
   public updateHUD(
@@ -155,6 +262,18 @@ export class UIManager {
         this.playerHealthGhost.style.width = `${hpPercent}%`;
       }
     }, 150);
+
+    // Low Health Heartbeat Vignette
+    if (player.health / player.maxHealth <= 0.32 && !player.isDead) {
+      this.lowHealthVignette.classList.remove('hidden');
+    } else {
+      this.lowHealthVignette.classList.add('hidden');
+    }
+
+    // Combo Timeout Decay
+    if (this.currentCombo > 0 && performance.now() - this.lastActionTime > 2600) {
+      this.resetCombo();
+    }
 
     // 2. Player Posture
     const posturePercent = Math.min(100, (player.posture / player.maxPosture) * 100);

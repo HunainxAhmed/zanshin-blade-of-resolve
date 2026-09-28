@@ -4,12 +4,18 @@ export class SoundManager {
   private sfxGain: GainNode | null = null;
   private musicGain: GainNode | null = null;
   private isMuted: boolean = false;
-  private ambientInterval: number | null = null;
+
   private inCombat: boolean = false;
+  private combatIntensity: number = 0; // 0 to 1
+  private musicClockTimer: number | null = null;
+  private beatStep: number = 0;
 
   private masterVolume: number = 0.9;
   private sfxVolume: number = 1.0;
-  private musicVolume: number = 0.5;
+  private musicVolume: number = 0.55;
+
+  // Japanese Hirajoshi Pentatonic Scale frequencies (Hz) for koto/ambient plucks
+  private hirajoshiNotes: number[] = [220, 246.94, 261.63, 329.63, 349.23, 440, 493.88, 523.25, 659.25, 698.46, 880];
 
   constructor() {}
 
@@ -31,7 +37,7 @@ export class SoundManager {
       this.musicGain.gain.setValueAtTime(this.musicVolume, this.ctx.currentTime);
       this.musicGain.connect(this.masterGain);
 
-      this.startAmbientLoop();
+      this.startInteractiveMusicEngine();
     } catch (e) {
       console.warn('Web Audio API not supported or blocked:', e);
     }
@@ -59,76 +65,81 @@ export class SoundManager {
   }
 
   // ==========================================
-  // COMBAT CLASH SOUND SYNTHESIS
+  // COMBAT SFX WITH PITCH LADDER
   // ==========================================
 
   /**
-   * Signature Sekiro-style Perfect Deflection Clash:
-   * Explosive metallic transient + high resonant singing bell + heavy sub punch
+   * Signature Sekiro-style Perfect Deflection Clash with Pitch Ladder:
+   * As deflection chains connect (streak 1, 2, 3+), pitch climbs dynamically!
    */
-  public playPerfectDeflect(): void {
+  public playPerfectDeflect(streak: number = 1): void {
     if (!this.ensureContext()) return;
     const now = this.ctx!.currentTime;
+    this.combatIntensity = Math.min(1.0, this.combatIntensity + 0.35);
 
-    // 1. Pure Crystal Bell Harmonics (1960Hz & 3920Hz)
+    // Multi-pitch climbing overtone
+    const pitchMultiplier = Math.pow(1.12, Math.min(6, streak - 1));
+    const baseFreq = 1860 * pitchMultiplier;
+
+    // 1. Crystal Harmonic Bell
     const bellOsc = this.ctx!.createOscillator();
     const bellGain = this.ctx!.createGain();
     bellOsc.type = 'sine';
-    bellOsc.frequency.setValueAtTime(1960, now);
-    bellOsc.frequency.exponentialRampToValueAtTime(1100, now + 0.65);
+    bellOsc.frequency.setValueAtTime(baseFreq, now);
+    bellOsc.frequency.exponentialRampToValueAtTime(baseFreq * 0.55, now + 0.7);
 
     bellGain.gain.setValueAtTime(1.0, now);
-    bellGain.gain.exponentialRampToValueAtTime(0.001, now + 0.65);
+    bellGain.gain.exponentialRampToValueAtTime(0.001, now + 0.7);
     bellOsc.connect(bellGain);
     bellGain.connect(this.sfxGain!);
     bellOsc.start(now);
-    bellOsc.stop(now + 0.65);
+    bellOsc.stop(now + 0.7);
 
-    // 2. High Metallic Overtone / Ring
+    // 2. High Ring Modulator Overtone
     const ringOsc = this.ctx!.createOscillator();
     const ringGain = this.ctx!.createGain();
     ringOsc.type = 'triangle';
-    ringOsc.frequency.setValueAtTime(3200, now);
-    ringOsc.frequency.exponentialRampToValueAtTime(1500, now + 0.5);
+    ringOsc.frequency.setValueAtTime(baseFreq * 1.5, now);
+    ringOsc.frequency.exponentialRampToValueAtTime(baseFreq * 0.7, now + 0.55);
 
-    ringGain.gain.setValueAtTime(0.85, now);
-    ringGain.gain.exponentialRampToValueAtTime(0.001, now + 0.5);
+    ringGain.gain.setValueAtTime(0.9, now);
+    ringGain.gain.exponentialRampToValueAtTime(0.001, now + 0.55);
     ringOsc.connect(ringGain);
     ringGain.connect(this.sfxGain!);
     ringOsc.start(now);
-    ringOsc.stop(now + 0.5);
+    ringOsc.stop(now + 0.55);
 
     // 3. Steel Blade Crack (High-velocity noise transient)
-    this.playNoiseBurst(0.08, 4500, 1.0);
+    this.playNoiseBurst(0.09, 5000, 1.0);
 
     // 4. Heavy Kinetic Bass Thud
     const subOsc = this.ctx!.createOscillator();
     const subGain = this.ctx!.createGain();
     subOsc.type = 'triangle';
-    subOsc.frequency.setValueAtTime(220, now);
-    subOsc.frequency.exponentialRampToValueAtTime(45, now + 0.16);
+    subOsc.frequency.setValueAtTime(240, now);
+    subOsc.frequency.exponentialRampToValueAtTime(40, now + 0.18);
 
     subGain.gain.setValueAtTime(1.0, now);
-    subGain.gain.exponentialRampToValueAtTime(0.01, now + 0.16);
+    subGain.gain.exponentialRampToValueAtTime(0.01, now + 0.18);
     subOsc.connect(subGain);
     subGain.connect(this.sfxGain!);
     subOsc.start(now);
-    subOsc.stop(now + 0.16);
+    subOsc.stop(now + 0.18);
   }
 
   /**
-   * Normal Block / Guard Clash: Heavy Anvil Steel Clank
+   * Normal Block / Guard Clash
    */
   public playNormalBlock(): void {
     if (!this.ensureContext()) return;
     const now = this.ctx!.currentTime;
+    this.combatIntensity = Math.min(1.0, this.combatIntensity + 0.15);
 
-    // Resonant Anvil Ping
     const osc = this.ctx!.createOscillator();
     const gain = this.ctx!.createGain();
     osc.type = 'sawtooth';
-    osc.frequency.setValueAtTime(680, now);
-    osc.frequency.exponentialRampToValueAtTime(220, now + 0.22);
+    osc.frequency.setValueAtTime(700, now);
+    osc.frequency.exponentialRampToValueAtTime(200, now + 0.22);
 
     const filter = this.ctx!.createBiquadFilter();
     filter.type = 'lowpass';
@@ -160,9 +171,6 @@ export class SoundManager {
     this.playNoiseBurst(0.06, 2200, 0.7);
   }
 
-  /**
-   * Sword Swing / Whoosh
-   */
   public playSwordSwing(speedMultiplier: number = 1.0): void {
     if (!this.ensureContext()) return;
     const now = this.ctx!.currentTime;
@@ -198,12 +206,10 @@ export class SoundManager {
     noise.stop(now + duration);
   }
 
-  /**
-   * Flesh Hit / Slicing Impact
-   */
   public playHitFlesh(isHeavy: boolean = false): void {
     if (!this.ensureContext()) return;
     const now = this.ctx!.currentTime;
+    this.combatIntensity = Math.min(1.0, this.combatIntensity + 0.25);
 
     const subOsc = this.ctx!.createOscillator();
     const subGain = this.ctx!.createGain();
@@ -222,11 +228,12 @@ export class SoundManager {
   }
 
   /**
-   * Thrust Counter (Mikiri-style): Ground-pinning stomp & blade crunch
+   * Mikiri Thrust Counter Stomp
    */
   public playThrustCounter(): void {
     if (!this.ensureContext()) return;
     const now = this.ctx!.currentTime;
+    this.combatIntensity = 1.0;
 
     const stompOsc = this.ctx!.createOscillator();
     const stompGain = this.ctx!.createGain();
@@ -255,11 +262,34 @@ export class SoundManager {
   }
 
   /**
-   * Posture Break
+   * Aerial Sweep Counter: Head-Stomp Vault
    */
+  public playHeadStomp(): void {
+    if (!this.ensureContext()) return;
+    const now = this.ctx!.currentTime;
+    this.combatIntensity = 1.0;
+
+    // Crunching vault stomp
+    const stomp = this.ctx!.createOscillator();
+    const stompGain = this.ctx!.createGain();
+    stomp.type = 'triangle';
+    stomp.frequency.setValueAtTime(320, now);
+    stomp.frequency.exponentialRampToValueAtTime(45, now + 0.28);
+    stompGain.gain.setValueAtTime(1.0, now);
+    stompGain.gain.exponentialRampToValueAtTime(0.001, now + 0.3);
+    stomp.connect(stompGain);
+    stompGain.connect(this.sfxGain!);
+    stomp.start(now);
+    stomp.stop(now + 0.3);
+
+    // Vault whoosh
+    this.playNoiseBurst(0.18, 1400, 0.7);
+  }
+
   public playPostureBreak(): void {
     if (!this.ensureContext()) return;
     const now = this.ctx!.currentTime;
+    this.combatIntensity = 1.0;
 
     [110, 220, 330, 440].forEach((freq, i) => {
       const gong = this.ctx!.createOscillator();
@@ -279,12 +309,10 @@ export class SoundManager {
     this.playNoiseBurst(0.25, 4500, 0.9);
   }
 
-  /**
-   * Execution Finishing Slash
-   */
   public playExecutionSlash(): void {
     if (!this.ensureContext()) return;
     const now = this.ctx!.currentTime;
+    this.combatIntensity = 1.0;
 
     const slash = this.ctx!.createOscillator();
     const slashGain = this.ctx!.createGain();
@@ -333,9 +361,38 @@ export class SoundManager {
     dangerPing.stop(now + 0.5);
   }
 
+  public playThunderClap(): void {
+    if (!this.ensureContext()) return;
+    const now = this.ctx!.currentTime;
+
+    const crack = this.ctx!.createOscillator();
+    const crackGain = this.ctx!.createGain();
+    crack.type = 'sawtooth';
+    crack.frequency.setValueAtTime(450, now);
+    crack.frequency.exponentialRampToValueAtTime(30, now + 0.8);
+    crackGain.gain.setValueAtTime(1.0, now);
+    crackGain.gain.exponentialRampToValueAtTime(0.001, now + 0.9);
+    crack.connect(crackGain);
+    crackGain.connect(this.sfxGain!);
+    crack.start(now);
+    crack.stop(now + 0.9);
+
+    this.playNoiseBurst(0.7, 1800, 0.9);
+  }
+
   public playDodge(): void {
     if (!this.ensureContext()) return;
     this.playNoiseBurst(0.12, 1100, 0.45);
+  }
+
+  public playWhoosh(): void {
+    if (!this.ensureContext()) return;
+    this.playNoiseBurst(0.14, 1200, 0.45);
+  }
+
+  public playFootstep(): void {
+    if (!this.ensureContext()) return;
+    this.playNoiseBurst(0.06, 800, 0.25);
   }
 
   public playSpecialAttack(): void {
@@ -379,38 +436,104 @@ export class SoundManager {
     });
   }
 
+  // ==========================================
+  // PROCEDURAL DYNAMIC COMBAT MUSIC SYSTEM
+  // ==========================================
+
   public setInCombat(inCombat: boolean): void {
     this.inCombat = inCombat;
   }
 
-  private startAmbientLoop(): void {
-    if (this.ambientInterval) return;
+  private startInteractiveMusicEngine(): void {
+    if (this.musicClockTimer) return;
 
-    this.ambientInterval = window.setInterval(() => {
+    // 16th-note clock at 112 BPM (approx 134ms per 16th note)
+    const intervalMs = 134;
+
+    this.musicClockTimer = window.setInterval(() => {
       if (!this.ctx || this.isMuted) return;
-      if (this.inCombat) {
-        this.playTaikoBeat();
+
+      this.beatStep = (this.beatStep + 1) % 32;
+
+      // Naturally decay combat intensity over time
+      if (this.combatIntensity > 0) {
+        this.combatIntensity = Math.max(0, this.combatIntensity - 0.012);
       }
-    }, 1800);
+
+      // 1. Bass Taiko Kick (Downbeats on steps 0, 8, 16, 24)
+      if (this.beatStep % 8 === 0) {
+        this.synthTaikoDrum(60, 0.45 * (0.4 + this.combatIntensity * 0.6));
+      }
+
+      // 2. High Shime-Daiko Rolls (Accents during combat on syncopated steps)
+      if (this.inCombat && (this.beatStep === 4 || this.beatStep === 12 || this.beatStep === 20 || this.beatStep === 28 || (this.combatIntensity > 0.5 && this.beatStep % 2 === 0))) {
+        this.synthShimeDrum(240, 0.25 * (0.3 + this.combatIntensity * 0.7));
+      }
+
+      // 3. Mystical Hirajoshi Koto Pluck (every 16 beats or on intensity shifts)
+      if (this.beatStep % 16 === 0 || (this.inCombat && this.beatStep === 6)) {
+        const noteIndex = Math.floor(Math.random() * this.hirajoshiNotes.length);
+        this.synthKotoNote(this.hirajoshiNotes[noteIndex]);
+      }
+    }, intervalMs);
   }
 
-  private playTaikoBeat(): void {
-    if (!this.ensureContext()) return;
-    const now = this.ctx!.currentTime;
+  private synthTaikoDrum(freq: number, volume: number): void {
+    if (!this.ctx || !this.musicGain) return;
+    const now = this.ctx.currentTime;
 
-    const osc = this.ctx!.createOscillator();
-    const gain = this.ctx!.createGain();
+    const osc = this.ctx.createOscillator();
+    const gain = this.ctx.createGain();
     osc.type = 'sine';
-    osc.frequency.setValueAtTime(65, now);
-    osc.frequency.exponentialRampToValueAtTime(25, now + 0.35);
+    osc.frequency.setValueAtTime(freq + 20, now);
+    osc.frequency.exponentialRampToValueAtTime(26, now + 0.32);
 
-    gain.gain.setValueAtTime(0.3 * this.musicVolume, now);
-    gain.gain.exponentialRampToValueAtTime(0.001, now + 0.4);
+    gain.gain.setValueAtTime(volume * this.musicVolume, now);
+    gain.gain.exponentialRampToValueAtTime(0.001, now + 0.35);
 
     osc.connect(gain);
-    gain.connect(this.musicGain!);
+    gain.connect(this.musicGain);
     osc.start(now);
-    osc.stop(now + 0.4);
+    osc.stop(now + 0.35);
+  }
+
+  private synthShimeDrum(freq: number, volume: number): void {
+    if (!this.ctx || !this.musicGain) return;
+    const now = this.ctx.currentTime;
+
+    const osc = this.ctx.createOscillator();
+    const gain = this.ctx.createGain();
+    osc.type = 'triangle';
+    osc.frequency.setValueAtTime(freq, now);
+    osc.frequency.exponentialRampToValueAtTime(90, now + 0.12);
+
+    gain.gain.setValueAtTime(volume * this.musicVolume, now);
+    gain.gain.exponentialRampToValueAtTime(0.001, now + 0.14);
+
+    osc.connect(gain);
+    gain.connect(this.musicGain);
+    osc.start(now);
+    osc.stop(now + 0.14);
+  }
+
+  private synthKotoNote(freq: number): void {
+    if (!this.ctx || !this.musicGain) return;
+    const now = this.ctx.currentTime;
+
+    const osc = this.ctx.createOscillator();
+    const gain = this.ctx.createGain();
+    osc.type = 'sine';
+    osc.frequency.setValueAtTime(freq, now);
+
+    // Koto sharp attack with long wooden resonance decay
+    gain.gain.setValueAtTime(0.001, now);
+    gain.gain.linearRampToValueAtTime(0.18 * this.musicVolume, now + 0.015);
+    gain.gain.exponentialRampToValueAtTime(0.001, now + 1.2);
+
+    osc.connect(gain);
+    gain.connect(this.musicGain);
+    osc.start(now);
+    osc.stop(now + 1.2);
   }
 
   private playNoiseBurst(duration: number, cutoff: number, volume: number): void {

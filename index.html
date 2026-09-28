@@ -99,11 +99,19 @@
       <span id="feedback-text">PERFECT DEFLECT</span>
     </div>
 
+    <!-- Combo Rating Badge (Top Right) -->
+    <div id="combo-container" class="combo-container hidden">
+      <div class="combo-counter"><span id="combo-count">0</span> HITS</div>
+      <div class="combo-rank" id="combo-rank">D</div>
+      <div class="combo-title" id="combo-title">RESOLVE</div>
+    </div>
+
     <!-- Controls Mini-Guide (Bottom Right) -->
     <div class="controls-cheatsheet" id="controls-cheatsheet">
       <div class="cheat-row"><span class="key">L-CLICK</span> Attack / Hold Heavy</div>
       <div class="cheat-row"><span class="key">R-CLICK</span> Deflect / Guard</div>
       <div class="cheat-row"><span class="key">SPACE</span> Dodge (i-frames)</div>
+      <div class="cheat-row"><span class="key">F</span> Jump / Head Stomp</div>
       <div class="cheat-row"><span class="key">Q</span> Lock-on Target</div>
       <div class="cheat-row"><span class="key">E</span> Counter Thrust / Execute</div>
       <div class="cheat-row"><span class="key">R</span> Special Attack</div>
@@ -118,9 +126,11 @@
     </div>
   </div>
 
-  <!-- Screen Flash FX -->
+  <!-- Screen Flash FX & Atmospheric Layers -->
   <div id="flash-overlay" class="flash-overlay"></div>
   <div id="vignette-overlay" class="vignette-overlay"></div>
+  <div id="low-health-vignette" class="low-health-vignette hidden"></div>
+  <div id="combat-numbers-layer" class="combat-numbers-layer"></div>
   <div id="cinematic-bars" class="cinematic-bars hidden">
     <div class="cinematic-bar bar-top"></div>
     <div class="cinematic-bar bar-bottom"></div>

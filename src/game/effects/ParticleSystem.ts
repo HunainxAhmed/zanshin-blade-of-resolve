@@ -9,19 +9,23 @@ interface Particle {
   life: number;
   gravity: number;
   drag: number;
-  shape: 'spark' | 'ring' | 'smoke' | 'blood';
+  shape: 'spark' | 'ring' | 'smoke' | 'blood' | 'sakura' | 'rain' | 'ember';
 }
+
+export type WeatherType = 'sakura' | 'rain' | 'embers' | 'clear';
 
 export class ParticleSystem {
   private scene: THREE.Scene;
   private particles: Particle[] = [];
-  private maxParticles = 1200;
+  private maxParticles = 1600;
 
   private sparkGeometry: THREE.BufferGeometry;
   private sparkMaterial: THREE.PointsMaterial;
   private sparkPoints: THREE.Points;
 
   private shockwaveMeshes: THREE.Mesh[] = [];
+  private currentWeather: WeatherType = 'sakura';
+  private weatherSpawnTimer: number = 0;
 
   constructor(scene: THREE.Scene) {
     this.scene = scene;
@@ -54,7 +58,7 @@ export class ParticleSystem {
     // Shockwave ring pool
     const ringGeo = new THREE.RingGeometry(0.1, 0.45, 32);
     ringGeo.rotateX(-Math.PI / 2);
-    for (let i = 0; i < 12; i++) {
+    for (let i = 0; i < 16; i++) {
       const ringMat = new THREE.MeshBasicMaterial({
         color: 0xfff066,
         side: THREE.DoubleSide,
@@ -86,6 +90,10 @@ export class ParticleSystem {
     ctx.fillRect(0, 0, 64, 64);
 
     return new THREE.CanvasTexture(canvas);
+  }
+
+  public setWeather(type: WeatherType): void {
+    this.currentWeather = type;
   }
 
   /**
@@ -176,6 +184,32 @@ export class ParticleSystem {
     }
   }
 
+  /**
+   * Aerial Sweep Counter: Head-Stomp Shockwave
+   */
+  public spawnHeadStompEffect(pos: THREE.Vector3): void {
+    this.triggerShockwave(pos, 0xffeb3b, 4.5, 0.3);
+
+    for (let i = 0; i < 35; i++) {
+      const vel = new THREE.Vector3(
+        (Math.random() - 0.5) * 6,
+        Math.random() * 2.5 + 0.5,
+        (Math.random() - 0.5) * 6
+      );
+      this.particles.push({
+        pos: pos.clone(),
+        vel,
+        color: new THREE.Color(1.0, 0.9, 0.3),
+        size: 0.4,
+        maxLife: 0.4,
+        life: 0,
+        gravity: 2.5,
+        drag: 0.92,
+        shape: 'spark',
+      });
+    }
+  }
+
   public spawnPostureBreakEffect(pos: THREE.Vector3): void {
     this.triggerShockwave(pos, 0xffa500, 5.5, 0.45);
     for (let i = 0; i < 60; i++) {
@@ -220,6 +254,27 @@ export class ParticleSystem {
     }
   }
 
+  public spawnPostureSteam(pos: THREE.Vector3): void {
+    for (let i = 0; i < 3; i++) {
+      const vel = new THREE.Vector3(
+        (Math.random() - 0.5) * 0.8,
+        Math.random() * 1.4 + 0.6,
+        (Math.random() - 0.5) * 0.8
+      );
+      this.particles.push({
+        pos: pos.clone().add(new THREE.Vector3((Math.random() - 0.5) * 0.4, 0.8, (Math.random() - 0.5) * 0.4)),
+        vel,
+        color: new THREE.Color(0.9, 0.7, 0.3),
+        size: 0.3,
+        maxLife: 0.4,
+        life: 0,
+        gravity: -0.5,
+        drag: 0.96,
+        shape: 'smoke',
+      });
+    }
+  }
+
   private triggerShockwave(pos: THREE.Vector3, colorHex: number, maxScale: number, duration: number): void {
     const mesh = this.shockwaveMeshes.find(m => !m.visible);
     if (!mesh) return;
@@ -249,6 +304,14 @@ export class ParticleSystem {
   }
 
   public update(delta: number): void {
+    // 1. Weather Spawner
+    this.weatherSpawnTimer += delta;
+    if (this.weatherSpawnTimer >= 0.04) {
+      this.weatherSpawnTimer = 0;
+      this.spawnWeatherParticles();
+    }
+
+    // 2. Physics & Life
     const positions = this.sparkGeometry.attributes.position.array as Float32Array;
     const colors = this.sparkGeometry.attributes.color.array as Float32Array;
     const sizes = this.sparkGeometry.attributes.size.array as Float32Array;
@@ -257,9 +320,15 @@ export class ParticleSystem {
       const p = this.particles[i];
       p.life += delta;
 
-      if (p.life >= p.maxLife) {
+      if (p.life >= p.maxLife || p.pos.y < 0) {
         this.particles.splice(i, 1);
         continue;
+      }
+
+      // Special swaying for sakura petals
+      if (p.shape === 'sakura') {
+        p.vel.x += Math.sin(p.life * 4.0) * 0.2;
+        p.vel.z += Math.cos(p.life * 3.0) * 0.2;
       }
 
       p.vel.y -= p.gravity * delta;
@@ -292,5 +361,58 @@ export class ParticleSystem {
     this.sparkGeometry.attributes.position.needsUpdate = true;
     this.sparkGeometry.attributes.color.needsUpdate = true;
     this.sparkGeometry.attributes.size.needsUpdate = true;
+  }
+
+  private spawnWeatherParticles(): void {
+    if (this.currentWeather === 'clear' || this.particles.length >= this.maxParticles - 100) return;
+
+    if (this.currentWeather === 'sakura') {
+      // Drifting Cherry Blossom Petals
+      const angle = Math.random() * Math.PI * 2;
+      const r = Math.random() * 18;
+      this.particles.push({
+        pos: new THREE.Vector3(Math.cos(angle) * r, 8 + Math.random() * 4, Math.sin(angle) * r),
+        vel: new THREE.Vector3(-1.2 + Math.random() * 0.5, -1.2, 0.8 + Math.random() * 0.4),
+        color: new THREE.Color(1.0, 0.75, 0.85),
+        size: 0.35,
+        maxLife: 7.0,
+        life: 0,
+        gravity: 0.15,
+        drag: 0.99,
+        shape: 'sakura',
+      });
+    } else if (this.currentWeather === 'rain') {
+      // Driving Storm Rain Streaks
+      for (let i = 0; i < 4; i++) {
+        const x = (Math.random() - 0.5) * 36;
+        const z = (Math.random() - 0.5) * 36;
+        this.particles.push({
+          pos: new THREE.Vector3(x, 14, z),
+          vel: new THREE.Vector3(-1.5, -28.0, 1.0),
+          color: new THREE.Color(0.65, 0.8, 1.0),
+          size: 0.22,
+          maxLife: 0.6,
+          life: 0,
+          gravity: 2.0,
+          drag: 1.0,
+          shape: 'rain',
+        });
+      }
+    } else if (this.currentWeather === 'embers') {
+      // Swirling Fire Embers
+      const angle = Math.random() * Math.PI * 2;
+      const r = Math.random() * 14;
+      this.particles.push({
+        pos: new THREE.Vector3(Math.cos(angle) * r, 0.2, Math.sin(angle) * r),
+        vel: new THREE.Vector3((Math.random() - 0.5) * 1.2, Math.random() * 2.2 + 0.8, (Math.random() - 0.5) * 1.2),
+        color: new THREE.Color(1.0, 0.45, 0.1),
+        size: 0.25,
+        maxLife: 3.5,
+        life: 0,
+        gravity: -0.4,
+        drag: 0.98,
+        shape: 'ember',
+      });
+    }
   }
 }

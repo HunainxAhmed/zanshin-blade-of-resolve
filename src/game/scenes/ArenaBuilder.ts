@@ -6,6 +6,7 @@ export interface ArenaData {
   colliders: THREE.Box3[];
   spawnPlayerPos: THREE.Vector3;
   spawnEnemyPos: THREE.Vector3;
+  weather: 'sakura' | 'rain' | 'embers' | 'clear';
 }
 
 export class ArenaBuilder {
@@ -107,6 +108,7 @@ export class ArenaBuilder {
       colliders: this.colliders,
       spawnPlayerPos: new THREE.Vector3(0, 0, 5),
       spawnEnemyPos: new THREE.Vector3(0, 0, -3),
+      weather: 'sakura',
     };
   }
 
@@ -160,6 +162,7 @@ export class ArenaBuilder {
       colliders: this.colliders,
       spawnPlayerPos: new THREE.Vector3(0, 0, 6),
       spawnEnemyPos: new THREE.Vector3(0, 0, -4),
+      weather: 'rain',
     };
   }
 
@@ -205,6 +208,7 @@ export class ArenaBuilder {
       colliders: this.colliders,
       spawnPlayerPos: new THREE.Vector3(0, 0, 7),
       spawnEnemyPos: new THREE.Vector3(0, 0, -5),
+      weather: 'embers',
     };
   }
 
@@ -243,6 +247,7 @@ export class ArenaBuilder {
       colliders: this.colliders,
       spawnPlayerPos: new THREE.Vector3(0, 0, 6),
       spawnEnemyPos: new THREE.Vector3(0, 0, -5),
+      weather: 'rain',
     };
   }
 
@@ -297,6 +302,7 @@ export class ArenaBuilder {
       colliders: this.colliders,
       spawnPlayerPos: new THREE.Vector3(0, 0, 8),
       spawnEnemyPos: new THREE.Vector3(0, 0, -6),
+      weather: 'sakura',
     };
   }
 

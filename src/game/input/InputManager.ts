@@ -11,6 +11,7 @@ export interface InputState {
   guardHeld: boolean;
   guardJustPressed: boolean;
   actionPressed: boolean;   // E (Thrust Counter / Execute)
+  jumpPressed: boolean;     // F (Jump / Sweep Evade / Head Stomp)
   specialPressed: boolean;  // R (Special attack)
   healPressed: boolean;     // 1
   lockonPressed: boolean;   // Q
@@ -32,6 +33,7 @@ export class InputManager {
     guardHeld: false,
     guardJustPressed: false,
     actionPressed: false,
+    jumpPressed: false,
     specialPressed: false,
     healPressed: false,
     lockonPressed: false,
@@ -43,7 +45,7 @@ export class InputManager {
   public mouseMovementY: number = 0;
 
   // Input buffering for tight combo responsiveness
-  public bufferedAction: 'attack' | 'dodge' | 'guard' | 'special' | null = null;
+  public bufferedAction: 'attack' | 'dodge' | 'guard' | 'special' | 'jump' | null = null;
   public bufferTimer: number = 0;
   private readonly BUFFER_WINDOW = 0.28; // 280ms input buffer
 
@@ -89,6 +91,10 @@ export class InputManager {
       case 'Space':
         this.state.dodgePressed = true;
         this.bufferAction('dodge');
+        break;
+      case 'KeyF':
+        this.state.jumpPressed = true;
+        this.bufferAction('jump');
         break;
       case 'KeyQ': this.state.lockonPressed = true; break;
       case 'KeyE': this.state.actionPressed = true; break;
@@ -148,12 +154,12 @@ export class InputManager {
     }
   }
 
-  public bufferAction(action: 'attack' | 'dodge' | 'guard' | 'special'): void {
+  public bufferAction(action: 'attack' | 'dodge' | 'guard' | 'special' | 'jump'): void {
     this.bufferedAction = action;
     this.bufferTimer = this.BUFFER_WINDOW;
   }
 
-  public consumeBufferedAction(): 'attack' | 'dodge' | 'guard' | 'special' | null {
+  public consumeBufferedAction(): 'attack' | 'dodge' | 'guard' | 'special' | 'jump' | null {
     const act = this.bufferedAction;
     this.bufferedAction = null;
     this.bufferTimer = 0;
@@ -180,6 +186,7 @@ export class InputManager {
    */
   public endFrame(): void {
     this.state.dodgePressed = false;
+    this.state.jumpPressed = false;
     this.state.attackPressed = false;
     this.state.guardJustPressed = false;
     this.state.actionPressed = false;

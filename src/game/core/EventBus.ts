@@ -16,6 +16,8 @@ export type GameEventType =
   | 'special_attack'
   | 'camera_shake'
   | 'perilous_warning'
+  | 'sweep_counter'
+  | 'sweep_evaded'
   | 'encounter_cleared';
 
 export interface CombatEventData {

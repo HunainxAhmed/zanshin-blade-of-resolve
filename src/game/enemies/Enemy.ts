@@ -15,11 +15,13 @@ export type EnemyAIState =
   | 'DEFEND'
   | 'DEFLECT_CLASH'
   | 'MIKIRI_VICTIM'
+  | 'SWEEP_VICTIM'
   | 'DODGE'
   | 'STAGGER'
   | 'POSTURE_BREAK'
   | 'EXECUTION_VICTIM'
   | 'RETREAT'
+  | 'SPECIAL_ATTACK'
   | 'DEAD';
 
 export interface EnemyConfig {
@@ -167,6 +169,16 @@ export class Enemy implements Combatant {
         }
         break;
 
+      case 'SWEEP_VICTIM':
+        if (this.stateTimer >= 0.75) {
+          if (this.posture >= this.maxPosture) {
+            this.transitionTo('POSTURE_BREAK');
+          } else {
+            this.transitionTo('IDLE');
+          }
+        }
+        break;
+
       case 'DODGE':
         this.updateDodgeState(delta);
         break;
@@ -187,6 +199,10 @@ export class Enemy implements Combatant {
 
       case 'EXECUTION_VICTIM':
         this.animator.setState('execution_victim');
+        break;
+
+      case 'SPECIAL_ATTACK':
+        this.updateSpecialAttack(delta, player, combatEngine);
         break;
     }
 
@@ -412,12 +428,20 @@ export class Enemy implements Combatant {
       case 'DEFEND': anim = 'guard'; break;
       case 'DEFLECT_CLASH': anim = 'deflect_parry_enemy'; break;
       case 'MIKIRI_VICTIM': anim = 'mikiri_victim'; break;
+      case 'SWEEP_VICTIM': anim = 'sweep_counter_victim'; break;
+      case 'SPECIAL_ATTACK': anim = 'heavy_strike'; break;
       case 'DODGE': anim = 'dodge'; break;
       case 'STAGGER': anim = 'stagger'; break;
       case 'POSTURE_BREAK': anim = 'posture_broken'; break;
       case 'DEAD': anim = 'dead'; break;
     }
     this.animator.setState(anim);
+  }
+
+  protected updateSpecialAttack(delta: number, player: Combatant, combatEngine: CombatEngine): void {
+    if (this.stateTimer >= 1.0) {
+      this.transitionTo('IDLE');
+    }
   }
 
   public onTakeDamage(amount: number, postureAmount: number, isCleanHit: boolean): void {
@@ -435,7 +459,7 @@ export class Enemy implements Combatant {
     if (this.consecutiveBlockedAttacks >= 2) {
       this.consecutiveBlockedAttacks = 0;
       setTimeout(() => {
-        if (!this.isDead && !this.isPostureBroken && this.aiState !== 'MIKIRI_VICTIM') {
+        if (!this.isDead && !this.isPostureBroken && this.aiState !== 'MIKIRI_VICTIM' && this.aiState !== 'SWEEP_VICTIM') {
           this.startAttackSequence();
         }
       }, 240);
@@ -447,6 +471,13 @@ export class Enemy implements Combatant {
     this.swordTrail.setActive(false);
     this.posture = Math.min(this.maxPosture, this.posture + 60);
     this.transitionTo('MIKIRI_VICTIM');
+  }
+
+  public onSweepCounterVictim(): void {
+    this.isAttackActiveWindow = false;
+    this.swordTrail.setActive(false);
+    this.posture = Math.min(this.maxPosture, this.posture + 55);
+    this.transitionTo('SWEEP_VICTIM');
   }
 
   public onDeflectedByOpponent(): void {

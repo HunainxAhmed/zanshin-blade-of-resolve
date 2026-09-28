@@ -310,6 +310,7 @@ export class Game {
   private setupArena(type: 'training' | 'forest' | 'temple' | 'rooftops' | 'boss'): void {
     this.currentArenaData = this.arenaBuilder.buildArena(type);
     this.lighting.setAtmosphere(type);
+    this.particles.setWeather(this.currentArenaData.weather);
     this.ui.setArenaInfo(this.currentArenaData.title, this.currentArenaData.objective);
     this.player.position.copy(this.currentArenaData.spawnPlayerPos);
   }

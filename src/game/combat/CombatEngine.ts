@@ -21,11 +21,13 @@ export interface Combatant {
   dodgeIFrameTimer: number; // Remaining i-frame time
   isExecuting: boolean;
   isDead: boolean;
+  isAirborne?: boolean;
   onTakeDamage(amount: number, postureAmount: number, isCleanHit: boolean): void;
   onDeflectSuccess(): void;
   onDeflectedByOpponent(): void;
   onPostureBreak(): void;
   onCounterSuccess?(): void;
+  onSweepCounterVictim?(): void;
 }
 
 export class CombatEngine {
@@ -64,8 +66,19 @@ export class CombatEngine {
     }
 
     // 2. Unblockables: Sweeps and Grabs bypass guard completely
-    if (attackType === 'sweep' || attackType === 'grab') {
+    if (attackType === 'sweep') {
+      const isAirborne = defender.isAirborne || defender.position.y > 0.45;
+      if (isAirborne) {
+        // Player successfully jumped over the sweep!
+        EventBus.emit('sweep_evaded', { attacker, defender });
+        return;
+      }
       this.applyCleanHit(attacker, defender, damage * 1.25, postureDamage * 1.5, contactPoint, attackType);
+      return;
+    }
+
+    if (attackType === 'grab') {
+      this.applyCleanHit(attacker, defender, damage * 1.35, postureDamage * 1.5, contactPoint, attackType);
       return;
     }
 
@@ -238,6 +251,28 @@ export class CombatEngine {
     }
 
     EventBus.emit('thrust_counter', { attacker, defender });
+  }
+
+  public triggerSweepHeadStomp(attacker: Combatant, defender: Combatant, contactPoint?: THREE.Vector3): void {
+    AudioEngine.playHeadStomp();
+    const point = contactPoint || defender.position.clone().add(new THREE.Vector3(0, 1.8, 0));
+    this.particles.spawnHeadStompEffect(point);
+    Time.triggerHitStop(0.12);
+    this.camera.addTrauma(COMBAT_CONFIG.SHAKE_HEAVY);
+
+    const postureDamage = 55;
+    defender.posture = Math.min(defender.maxPosture, defender.posture + postureDamage);
+    if (defender.onSweepCounterVictim) {
+      defender.onSweepCounterVictim();
+    } else {
+      defender.onTakeDamage(0, postureDamage, true);
+    }
+
+    if (defender.posture >= defender.maxPosture && !defender.isPostureBroken) {
+      this.triggerPostureBreak(defender);
+    }
+
+    EventBus.emit('sweep_counter', { attacker, defender, postureDamage });
   }
 
   public triggerPostureBreak(target: Combatant): void {

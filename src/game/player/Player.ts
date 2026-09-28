@@ -16,6 +16,9 @@ export type PlayerCombatState =
   | 'MOVE'
   | 'SPRINT'
   | 'DODGE'
+  | 'JUMP'
+  | 'JUMP_SLASH'
+  | 'HEAD_STOMP'
   | 'ATTACK_1'
   | 'ATTACK_2'
   | 'ATTACK_3'
@@ -66,11 +69,14 @@ export class Player implements Combatant {
   public isExecuting: boolean = false;
   public isDead: boolean = false;
 
-  // Locomotion
+  // Locomotion & Physics
   public velocity: THREE.Vector3 = new THREE.Vector3();
   public moveDirection: THREE.Vector3 = new THREE.Vector3();
   public facingAngle: number = 0;
   private dodgeDirection: THREE.Vector3 = new THREE.Vector3();
+  public verticalVelocity: number = 0;
+  public isAirborne: boolean = false;
+  private jumpHorizontalVelocity: THREE.Vector3 = new THREE.Vector3();
 
   // Attack Tracking
   public isAttackActiveWindow: boolean = false;
@@ -138,6 +144,18 @@ export class Player implements Combatant {
 
       case 'DODGE':
         this.handleDodgeState(delta);
+        break;
+
+      case 'JUMP':
+        this.handleJumpState(delta, input, camera, enemies, combatEngine, particles, buffered);
+        break;
+
+      case 'JUMP_SLASH':
+        this.handleJumpSlashState(delta, enemies, combatEngine);
+        break;
+
+      case 'HEAD_STOMP':
+        this.handleHeadStompState(delta);
         break;
 
       case 'GUARD':
@@ -295,6 +313,12 @@ export class Player implements Combatant {
       return;
     }
 
+    // 6. Jump [F]
+    if (input.state.jumpPressed || bufferedAction === 'jump') {
+      this.startJump(camera, input, particles);
+      return;
+    }
+
     // 6. WASD Movement
     const moveZ = (input.state.forward ? 1 : 0) - (input.state.backward ? 1 : 0);
     const moveX = (input.state.right ? 1 : 0) - (input.state.left ? 1 : 0);
@@ -373,6 +397,152 @@ export class Player implements Combatant {
 
     if (this.stateTimer >= 0.38) {
       this.isDodging = false;
+      this.transitionTo('IDLE');
+    }
+  }
+
+  private startJump(camera: CombatCamera, input: InputManager, particles: ParticleSystem): void {
+    const moveZ = (input.state.forward ? 1 : 0) - (input.state.backward ? 1 : 0);
+    const moveX = (input.state.right ? 1 : 0) - (input.state.left ? 1 : 0);
+
+    const camYaw = camera.yaw;
+    const fwd = new THREE.Vector3(-Math.sin(camYaw), 0, -Math.cos(camYaw));
+    const right = new THREE.Vector3(Math.cos(camYaw), 0, -Math.sin(camYaw));
+
+    if (moveX !== 0 || moveZ !== 0) {
+      this.jumpHorizontalVelocity.copy(fwd.multiplyScalar(moveZ).add(right.multiplyScalar(moveX))).normalize();
+      const speed = input.state.sprint ? COMBAT_CONFIG.SPRINT_SPEED * 0.95 : COMBAT_CONFIG.RUN_SPEED * 0.9;
+      this.jumpHorizontalVelocity.multiplyScalar(speed);
+      this.facingAngle = Math.atan2(this.jumpHorizontalVelocity.x, this.jumpHorizontalVelocity.z);
+      this.rig.root.rotation.y = this.facingAngle;
+    } else {
+      this.jumpHorizontalVelocity.set(0, 0, 0);
+    }
+
+    this.isAirborne = true;
+    this.verticalVelocity = 9.2;
+    AudioEngine.playWhoosh();
+    particles.spawnDodgeDust(this.position, new THREE.Vector3(0, 0, 1));
+    this.transitionTo('JUMP');
+  }
+
+  private handleJumpState(
+    delta: number,
+    input: InputManager,
+    camera: CombatCamera,
+    enemies: Combatant[],
+    combatEngine: CombatEngine,
+    particles: ParticleSystem,
+    bufferedAction: string | null
+  ): void {
+    // 1. Gravity & vertical integration
+    this.verticalVelocity -= 26.0 * delta;
+    this.position.y += this.verticalVelocity * delta;
+
+    // 2. Horizontal drift
+    this.position.addScaledVector(this.jumpHorizontalVelocity, delta);
+
+    // 3. Animation update
+    if (this.verticalVelocity > 0) {
+      this.animator.setState('jump_rise');
+    } else {
+      this.animator.setState('jump_fall');
+    }
+
+    // 4. Air Slash cancel
+    if (input.state.attackPressed || bufferedAction === 'attack') {
+      this.transitionTo('JUMP_SLASH');
+      return;
+    }
+
+    // 5. Head Stomp counter detection
+    const wantsStomp = input.state.jumpPressed || bufferedAction === 'jump' || (this.verticalVelocity < 0 && this.position.y <= 1.8 && this.position.y >= 0.2);
+    if (wantsStomp) {
+      for (const enemy of enemies) {
+        if (enemy.isDead || enemy.isExecuting) continue;
+        const horizDist = new THREE.Vector2(this.position.x - enemy.position.x, this.position.z - enemy.position.z).length();
+        const isEnemySweeping = (enemy as any).currentAttackType === 'sweep' && (enemy as any).aiState === 'ATTACK';
+        if (horizDist < 2.2 && (isEnemySweeping || input.state.jumpPressed || bufferedAction === 'jump')) {
+          this.performHeadStomp(enemy, combatEngine, particles, camera);
+          return;
+        }
+      }
+    }
+
+    // 6. Touchdown
+    if (this.position.y <= 0) {
+      this.position.y = 0;
+      this.verticalVelocity = 0;
+      this.isAirborne = false;
+      AudioEngine.playFootstep();
+      particles.spawnDodgeDust(this.position, new THREE.Vector3(0, 0, 1));
+      this.transitionTo('IDLE');
+    }
+  }
+
+  private handleJumpSlashState(
+    delta: number,
+    enemies: Combatant[],
+    combatEngine: CombatEngine
+  ): void {
+    this.verticalVelocity -= 26.0 * delta;
+    this.position.y += this.verticalVelocity * delta;
+    this.position.addScaledVector(this.jumpHorizontalVelocity, delta * 0.7);
+
+    // Active hit frames
+    if (this.stateTimer >= 0.08 && this.stateTimer <= 0.32) {
+      if (!this.isAttackActiveWindow) {
+        this.isAttackActiveWindow = true;
+        this.swordTrail.setActive(true);
+        AudioEngine.playSwordSwing();
+      }
+      this.checkAirHit(enemies, combatEngine);
+    } else {
+      this.isAttackActiveWindow = false;
+    }
+
+    if (this.position.y <= 0) {
+      this.position.y = 0;
+      this.verticalVelocity = 0;
+      this.isAirborne = false;
+      this.swordTrail.setActive(false);
+      this.transitionTo('IDLE');
+    }
+  }
+
+  private checkAirHit(enemies: Combatant[], combatEngine: CombatEngine): void {
+    if (this.hasHitCurrentSwing) return;
+    this.checkWeaponHits(35, 30, 'heavy', enemies, combatEngine);
+  }
+
+  public performHeadStomp(
+    enemy: Combatant,
+    combatEngine: CombatEngine,
+    particles: ParticleSystem,
+    camera: CombatCamera
+  ): void {
+    const toEnemy = enemy.position.clone().sub(this.position).setY(0);
+    this.facingAngle = Math.atan2(toEnemy.x, toEnemy.z);
+    this.rig.root.rotation.y = this.facingAngle;
+
+    this.position.x = enemy.position.x - Math.sin(this.facingAngle) * 0.4;
+    this.position.z = enemy.position.z - Math.cos(this.facingAngle) * 0.4;
+    this.position.y = 1.6;
+    this.verticalVelocity = 7.5;
+    this.isAirborne = true;
+
+    combatEngine.triggerSweepHeadStomp(this, enemy, new THREE.Vector3(enemy.position.x, enemy.position.y + 1.7, enemy.position.z));
+    this.transitionTo('HEAD_STOMP');
+  }
+
+  private handleHeadStompState(delta: number): void {
+    this.verticalVelocity -= 24.0 * delta;
+    this.position.y += this.verticalVelocity * delta;
+
+    if (this.position.y <= 0) {
+      this.position.y = 0;
+      this.verticalVelocity = 0;
+      this.isAirborne = false;
       this.transitionTo('IDLE');
     }
   }
@@ -614,6 +784,9 @@ export class Player implements Combatant {
       case 'MOVE': anim = 'run'; break;
       case 'SPRINT': anim = 'sprint'; break;
       case 'DODGE': anim = 'dodge'; break;
+      case 'JUMP': anim = this.verticalVelocity > 0 ? 'jump_rise' : 'jump_fall'; break;
+      case 'JUMP_SLASH': anim = 'jump_slash'; this.hasHitCurrentSwing = false; break;
+      case 'HEAD_STOMP': anim = 'head_stomp'; break;
       case 'GUARD': anim = 'guard'; break;
       case 'DEFLECT_REACT': anim = 'deflect_parry_player'; break;
       case 'DEFLECT_PARRY': anim = 'deflect_parry_player'; break;

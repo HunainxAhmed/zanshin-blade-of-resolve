@@ -17,6 +17,11 @@ export type AnimState =
   | 'deflect_parry_enemy'
   | 'mikiri_stomp'
   | 'mikiri_victim'
+  | 'jump_rise'
+  | 'jump_fall'
+  | 'jump_slash'
+  | 'head_stomp'
+  | 'sweep_counter_victim'
   | 'stagger'
   | 'posture_broken'
   | 'thrust'
@@ -78,6 +83,21 @@ export class ProceduralAnimator {
         break;
       case 'mikiri_victim':
         this.animateMikiriVictim(t);
+        break;
+      case 'jump_rise':
+        this.animateJumpRise(t);
+        break;
+      case 'jump_fall':
+        this.animateJumpFall(t);
+        break;
+      case 'jump_slash':
+        this.animateJumpSlash(t);
+        break;
+      case 'head_stomp':
+        this.animateHeadStomp(t);
+        break;
+      case 'sweep_counter_victim':
+        this.animateSweepCounterVictim(t);
         break;
       case 'attack1':
         this.animateAttack1(t);
@@ -645,6 +665,95 @@ export class ProceduralAnimator {
     j.spine.rotation.set(0.12, spin, 0);
     j.rightArm.rotation.set(0.7, 0, 0.5);
     j.weapon.rotation.set(-0.25, 0.85, 0.6);
+  }
+
+  private animateJumpRise(t: number): void {
+    const j = this.rig.joints;
+    // Knees tucked, body coiled, weapon ready
+    j.hips.position.y = 0.95;
+    j.spine.rotation.set(0.2, 0, 0);
+    j.leftThigh.rotation.set(-0.8, 0, -0.1);
+    j.leftShin.rotation.set(1.2, 0, 0);
+    j.rightThigh.rotation.set(-0.7, 0, 0.1);
+    j.rightShin.rotation.set(1.1, 0, 0);
+
+    j.rightArm.rotation.set(0.4, -0.3, 0.3);
+    j.weapon.rotation.set(-0.5, 0.2, 0.4);
+  }
+
+  private animateJumpFall(t: number): void {
+    const j = this.rig.joints;
+    // Legs extending down preparing for landing absorption
+    j.hips.position.y = 0.95;
+    j.spine.rotation.set(0.1, 0, 0);
+    j.leftThigh.rotation.set(-0.3, 0, -0.1);
+    j.leftShin.rotation.set(0.4, 0, 0);
+    j.rightThigh.rotation.set(0.2, 0, 0.1);
+    j.rightShin.rotation.set(0.3, 0, 0);
+  }
+
+  private animateJumpSlash(t: number): void {
+    const j = this.rig.joints;
+    const duration = 0.42;
+    const p = Math.min(1.0, t / duration);
+
+    // Mid-air spinning downward cleave
+    const spin = p * Math.PI * 1.5;
+    j.hips.position.y = 0.95;
+    j.spine.rotation.set(0.35, spin, 0);
+
+    j.leftThigh.rotation.set(-0.7, 0, 0);
+    j.leftShin.rotation.set(1.2, 0, 0);
+    j.rightThigh.rotation.set(0.3, 0, 0);
+    j.rightShin.rotation.set(0.6, 0, 0);
+
+    j.rightArm.rotation.set(1.2 - 2.0 * p, 0, 0.2);
+    j.weapon.rotation.set(1.0 - 2.6 * p, 0, 0);
+  }
+
+  /**
+   * Aerial Sweep Counter: Head-Stomp Vault
+   * Player crashes both boots down onto enemy's head, vaulting back into a high backflip!
+   */
+  private animateHeadStomp(t: number): void {
+    const j = this.rig.joints;
+    const duration = 0.65;
+    const p = Math.min(1.0, t / duration);
+
+    if (p < 0.35) {
+      // Both feet drive straight down into enemy head
+      const sub = p / 0.35;
+      j.hips.position.y = 0.95 - 0.2 * sub;
+      j.spine.rotation.set(0.3, 0, 0);
+      j.leftThigh.rotation.set(-0.9 * sub, 0, 0);
+      j.leftShin.rotation.set(0.5 * sub, 0, 0);
+      j.rightThigh.rotation.set(-0.9 * sub, 0, 0);
+      j.rightShin.rotation.set(0.5 * sub, 0, 0);
+      j.weapon.rotation.set(-0.6, 0, 0.4);
+    } else {
+      // High acrobatic vault backflip
+      const sub = (p - 0.35) / 0.65;
+      j.hips.position.y = 0.95 + Math.sin(sub * Math.PI) * 0.4;
+      j.spine.rotation.set(0.3 - sub * Math.PI * 1.8, 0, 0);
+      j.leftThigh.rotation.set(-0.9 + 0.6 * sub, 0, 0);
+      j.rightThigh.rotation.set(-0.9 + 0.6 * sub, 0, 0);
+    }
+  }
+
+  /**
+   * Enemy Sweep Counter Victim: Head stomped down into floor
+   */
+  private animateSweepCounterVictim(t: number): void {
+    const j = this.rig.joints;
+    const duration = 0.7;
+    const p = Math.min(1.0, t / duration);
+
+    // Head driven downward, knees buckle
+    const dip = Math.sin(p * Math.PI) * 0.45;
+    j.hips.position.y = 0.95 - dip;
+    j.spine.rotation.set(0.7 * Math.sin(p * Math.PI), 0, 0);
+    j.head.rotation.set(0.6 * Math.sin(p * Math.PI), 0, 0);
+    j.weapon.rotation.set(-1.2, 0, 0);
   }
 
   private animateDead(t: number): void {
